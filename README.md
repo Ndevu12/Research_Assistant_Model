@@ -1,106 +1,120 @@
-# AI Research Assistant Model
+# AI Research Assistant
 
-A local AI research assistant that automatically retrieves academic papers from OpenAlex and Semantic Scholar, then analyzes them using Llama 3.2 via Ollama.
+A local-first AI research assistant that automatically retrieves academic papers from OpenAlex and Semantic Scholar, then analyzes them using Llama 3.2 via Ollama. Built with Python 3.13, pydantic-ai, and async/await for efficient paper retrieval and analysis.
 
 ## Features
 
 - **Local-first**: Runs entirely on your machine using Ollama + Llama 3.2:3b
-- **Dual-source retrieval**: Searches both OpenAlex and Semantic Scholar APIs
-- **Deduplication**: Removes duplicate papers based on DOI and normalized title
-- **Structured output**: Returns research reports in a consistent JSON schema
-- **Auto-setup**: Installs dependencies and configures Ollama automatically
+- **Dual-source retrieval**: Searches both OpenAlex and Semantic Scholar APIs in parallel
+- **Smart deduplication**: Removes duplicate papers based on DOI and normalized title matching
+- **Structured output**: Returns research reports in a consistent JSON schema using Pydantic models
+- **Auto-setup**: Automatically installs dependencies and configures Ollama
+- **Async architecture**: Fast concurrent API calls using aiohttp
+- **Modular design**: Clean separation of retrieval, analysis, and utility modules
 
 ## Requirements
 
 - Python 3.13+
-- ~4GB RAM for the 3B model
+- ~4GB RAM for the Llama 3.2:3b model
 - Internet connection (for initial setup and API calls)
+- Pipenv for dependency management
 
 ## Project Structure
 
 ```
 Research_Assistant_Model/
-├── model.py              # Main entry point (auto-setup + execution)
-├── requirements.txt      # Python dependencies
-├── setup/
-│   ├── install_deps.sh   # Install Python dependencies
-│   ├── install_ollama.sh # Install Ollama (OS-aware)
-│   ├── setup.sh          # Full setup script (non-conda)
-│   └── setup_conda.sh    # Full setup script (conda)
-├── .kiro/
-│   └── settings/
-│       └── mcp.json      # MCP server configuration
+├── src/                  # Source code package
+│   ├── __init__.py       # Package initialization
+│   ├── __main__.py       # Entry point (enables `python -m src`)
+│   ├── retrieval/        # Paper retrieval logic
+│   │   ├── __init__.py
+│   │   ├── openalex.py   # OpenAlex API client
+│   │   ├── semanticscholar.py  # Semantic Scholar API client
+│   │   ├── models.py     # Data schemas (PaperAnalysis, ResearchReport, RetrievedPaper)
+│   │   ├── rendering.py  # Output formatting functions
+│   │   ├── helpers.py    # Helper functions (_normalize_title, _dedupe, etc.)
+│   │   └── orchestrator.py  # Main research workflow orchestration
+│   ├── analysis/         # LLM analysis logic
+│   │   ├── __init__.py
+│   │   └── llm.py        # LLM agent configuration and analysis logic
+│   └── utils/            # Helper functions and setup scripts
+│       ├── __init__.py
+│       ├── setup.py      # Python dependency installation
+│       ├── ollama.py     # Ollama installation and model setup
+│       └── run_setup.py  # Main setup orchestration
+├── notebooks/            # Jupyter notebooks
+├── tests/                # Unit and integration tests
+├── data/                 # Data storage (ignored in git)
+├── docs/                 # Documentation
+├── Pipfile               # Pipenv dependencies
+├── Pipfile.lock          # Pipenv lock file (generated)
+├── pyproject.toml        # Build configuration
+├── .env                  # Environment variables (ignored in git)
+├── .gitignore
 └── README.md
 ```
 
 ## Installation
 
-### Option 1: Auto-setup (Recommended)
-
-Simply run the main script - it will handle everything:
-
-```bash
-python model.py
-```
-
-This will:
-1. Check/install Python dependencies
-2. Check/install Ollama (Arch/Ubuntu/macOS supported)
-3. Start Ollama server if needed
-4. Pull the `llama3.2:3b` model if needed
-
-**Note:** The first run will install Ollama and download the model (~2GB). This may take several minutes depending on your internet connection.
-
-### Option 2: Manual Setup with Conda
-
-```bash
-# Run the setup script
-bash setup/setup_conda.sh
-
-# Activate the environment
-conda activate research_assistant
-
-# Run the assistant
-python model.py
-```
-
-### Option 3: Manual Setup (Non-Conda)
+### Quick Start (Recommended)
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pipenv install
 
-# Run the setup script
-bash setup/setup.sh
+# Run the assistant (auto-setup runs on first execution)
+pipenv run python -m src
+```
+
+The first run will automatically:
+1. Install Python dependencies (pydantic-ai, aiohttp, pydantic)
+2. Check/install Ollama (Arch/Ubuntu/macOS supported)
+3. Start Ollama server if needed
+4. Pull the `llama3.2:3b` model (~2GB download)
+
+**Note:** Initial setup may take several minutes depending on your internet connection.
+
+### Manual Setup
+
+If you prefer to set up components manually:
+
+```bash
+# Install pipenv if not already installed
+pip install pipenv
+
+# Install Python dependencies
+pipenv install
+
+# Run setup script explicitly
+pipenv run python -m src.utils.run_setup
 
 # Run the assistant
-python model.py
+pipenv run python -m src
 ```
 
 ## Usage
 
-### Quick Start
+### Command Line
 
+Run with default query:
 ```bash
-python model.py
+pipenv run python -m src
 ```
 
-The default query is: `"On-device LLM reasoning for IoT DDoS detection"`
-
-### Custom Query
-
-Edit the `QUERY` variable in `model.py`:
-
-```python
-if __name__ == "__main__":
-    QUERY = "Your research query here"
-    asyncio.run(run_research_helper(QUERY))
+Run with custom query:
+```bash
+pipenv run python -m src "Your research query here"
 ```
 
-### As a Module
+Show help:
+```bash
+pipenv run python -m src --help
+```
+
+### As a Python Module
 
 ```python
-from model import run_research_helper
+from src.retrieval.orchestrator import run_research_helper
 import asyncio
 
 async def main():
@@ -109,32 +123,43 @@ async def main():
 asyncio.run(main())
 ```
 
+### Environment Variables
+
+Create a `.env` file (optional):
+```bash
+# Semantic Scholar API key (optional, increases rate limits)
+S2_API_KEY=your_api_key_here
+```
+
 ## Output Format
 
-The assistant returns a markdown-formatted report with:
-- Paper title, year, and venue
-- Source URL or DOI
-- Key points extracted by the LLM
-- Relevance explanation for each paper
+The assistant returns a markdown-formatted research report with:
+- Query summary
+- Top 10 relevant papers (deduplicated)
+- For each paper:
+  - Title, year, and venue
+  - Source URL or DOI
+  - Key points extracted by the LLM
+  - Relevance explanation
 
-Example:
-```
+Example output:
+```markdown
 # Research helper results
 Query: On-device LLM reasoning for IoT DDoS detection
 
-## 1. Paper Title
+## 1. Lightweight LLM Architecture for Edge Devices
 2024 | IEEE IoT Journal
 Source: https://doi.org/10.xxxx/xxxxx
 
 Key points:
-- Lightweight model architecture
-- Edge-based detection
-- Low latency inference
+- Novel quantization technique reduces model size by 75%
+- Edge-based inference with <100ms latency
+- Achieves 95% accuracy on DDoS detection benchmarks
 
 Why this matches your query:
-- Addresses on-device LLM for IoT
-- Focuses on DDoS detection
-- Published in relevant venue
+- Directly addresses on-device LLM deployment
+- Focuses on IoT security and DDoS detection
+- Published in top-tier IoT venue
 ```
 
 ## Troubleshooting
@@ -163,18 +188,107 @@ ollama serve
 - Verify Ollama is running: `ollama list`
 - Ensure the model is pulled: `ollama pull llama3.2:3b`
 
+### Pipenv issues
+If pipenv is not found, install it first:
+```bash
+pip install pipenv
+```
+
+To activate the virtual environment manually:
+```bash
+pipenv shell
+```
+
+### Import errors
+If you encounter import errors after the refactoring:
+- Ensure you're using `pipenv run` to run commands
+- Verify the new structure is in place: `ls src/`
+- Run setup again: `pipenv run python -m src.utils.run_setup`
+
 ## Architecture
 
+The assistant follows a modular pipeline architecture:
+
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   User Query    │────>│  Paper Retrieval │────>│   LLM Analysis  │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-                              │                        │
-                              ▼                        ▼
-                    ┌──────────────────┐     ┌─────────────────┐
-                    │  OpenAlex API    │     │  Llama 3.2:3b   │
-                    │ Semantic Scholar │     │   (via Ollama)  │
-                    └──────────────────┘     └─────────────────┘
+┌─────────────────┐
+│   User Query    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Parallel Paper Retrieval       │
+│  ┌──────────┐  ┌──────────────┐ │
+│  │ OpenAlex │  │   Semantic   │ │
+│  │   API    │  │  Scholar API │ │
+│  └──────────┘  └──────────────┘ │
+└────────┬────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Deduplication & Ranking        │
+│  (DOI + Title Normalization)    │
+└────────┬────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  LLM Analysis                   │
+│  (Llama 3.2:3b via Ollama)      │
+└────────┬────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Markdown Report Generation     │
+└─────────────────────────────────┘
+```
+
+## Development
+
+### Import Paths
+
+**Within the package (relative imports):**
+```python
+# In src/retrieval/openalex.py
+from .models import RetrievedPaper
+from .helpers import _normalize_title
+
+# In src/analysis/llm.py
+from ..retrieval.models import PaperAnalysis
+
+# In src/__main__.py
+from .retrieval.openalex import search_openalex
+from .retrieval.semanticscholar import search_semantic_scholar
+from .analysis.llm import analysis_agent
+```
+
+**From external scripts (absolute imports):**
+```python
+from src.retrieval.openalex import search_openalex
+from src.retrieval.semanticscholar import search_semantic_scholar
+from src.analysis.llm import analysis_agent
+from src.utils.run_setup import run_setup
+```
+
+### Dependencies
+
+Core dependencies (managed via Pipenv):
+- `pydantic-ai` - LLM agent framework with structured outputs
+- `aiohttp` - Async HTTP client for API calls
+- `pydantic` - Data validation and schema definition
+
+### Running in Development
+
+```bash
+# Activate virtual environment
+pipenv shell
+
+# Run the assistant
+python -m src
+
+# Run setup script
+python -m src.utils.run_setup
+
+# Exit virtual environment
+exit
 ```
 
 ## License

@@ -11,18 +11,18 @@ def run_setup() -> None:
 
     # Install Python dependencies
     print("\nStep 1: Installing Python dependencies...")
-    subprocess.run([sys.executable, "setup/install_deps.py"], check=True)
+    subprocess.run([sys.executable, "-m", "src.utils.setup"], check=True)
 
     # Install Ollama
     print("\nStep 2: Installing Ollama...")
-    subprocess.run([sys.executable, "setup/install_ollama.py"], check=True)
+    subprocess.run([sys.executable, "-m", "src.utils.ollama", "install"], check=True)
 
     # Setup Ollama model
     print("\nStep 3: Setting up Ollama model...")
-    subprocess.run([sys.executable, "setup/setup_ollama_model.py"], check=True)
+    subprocess.run([sys.executable, "-m", "src.utils.ollama", "setup"], check=True)
 
     print("\n=== Setup Complete ===")
-
-
-if __name__ == "__main__":
-    run_setup()
+    print("\nTo run the assistant:")
+    print("  pipenv run python -m src")
+    print("  OR")
+    print("  pipenv shell  # then run python -m src")
