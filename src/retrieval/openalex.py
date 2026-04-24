@@ -8,6 +8,7 @@ import aiohttp
 
 from .helpers import _openalex_abstract_from_inverted_index
 from .models import RetrievedPaper
+from ..utils.message_formatter import MessageFormatter
 
 
 async def search_openalex(session: aiohttp.ClientSession, query: str, per_page: int = 8) -> list[RetrievedPaper]:
@@ -25,7 +26,7 @@ async def search_openalex(session: aiohttp.ClientSession, query: str, per_page: 
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             if attempt == max_retries - 1:
                 raise
-            print(f"OpenAlex attempt {attempt + 1} failed: {e}. Retrying...")
+            print(MessageFormatter.api_retry_message("OpenAlex", attempt + 1, str(e)))
             await asyncio.sleep(2 ** attempt)
 
     results = []

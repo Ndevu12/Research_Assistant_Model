@@ -120,6 +120,88 @@ class MessageFormatter:
         return f"{cls.ERROR_PREFIX} Parsing Error: {error}"
     
     @classmethod
+    def json_syntax_error(cls, error: str, line: int = None, column: int = None) -> str:
+        """Format JSON syntax error messages with specific location information.
+        
+        Args:
+            error: The JSON syntax error description.
+            line: Line number where the error occurred (if available).
+            column: Column number where the error occurred (if available).
+            
+        Returns:
+            str: Formatted JSON syntax error message.
+        """
+        location_info = ""
+        if line is not None and column is not None:
+            location_info = f" at line {line}, column {column}"
+        elif line is not None:
+            location_info = f" at line {line}"
+        
+        return f"{cls.ERROR_PREFIX} Parsing Error: JSON Syntax{location_info} - {error}"
+    
+    @classmethod
+    def schema_validation_error(cls, error: str) -> str:
+        """Format schema validation error messages.
+        
+        Args:
+            error: The schema validation error description.
+            
+        Returns:
+            str: Formatted schema validation error message.
+        """
+        return f"{cls.ERROR_PREFIX} Parsing Error: Schema Validation - {error}"
+    
+    @classmethod
+    def field_type_error(cls, field_name: str, expected_type: str, actual_type: str) -> str:
+        """Format field type error messages.
+        
+        Args:
+            field_name: Name of the field with incorrect type.
+            expected_type: Expected data type.
+            actual_type: Actual data type found.
+            
+        Returns:
+            str: Formatted field type error message.
+        """
+        return f"{cls.ERROR_PREFIX} Parsing Error: Field Type - '{field_name}' must be a {expected_type}, got {actual_type}"
+    
+    @classmethod
+    def structure_error(cls, error: str) -> str:
+        """Format JSON structure error messages.
+        
+        Args:
+            error: The structure error description.
+            
+        Returns:
+            str: Formatted structure error message.
+        """
+        return f"{cls.ERROR_PREFIX} Parsing Error: Structure - {error}"
+    
+    @classmethod
+    def extraction_error(cls, error: str) -> str:
+        """Format JSON extraction error messages.
+        
+        Args:
+            error: The extraction error description.
+            
+        Returns:
+            str: Formatted extraction error message.
+        """
+        return f"{cls.ERROR_PREFIX} Parsing Error: Extraction - {error}"
+    
+    @classmethod
+    def validation_error(cls, error: str) -> str:
+        """Format general validation error messages.
+        
+        Args:
+            error: The validation error description.
+            
+        Returns:
+            str: Formatted validation error message.
+        """
+        return f"{cls.ERROR_PREFIX} Parsing Error: Validation - {error}"
+    
+    @classmethod
     def raw_response_header(cls) -> str:
         """Format the raw response header for debugging.
         
@@ -127,6 +209,59 @@ class MessageFormatter:
             str: Formatted raw response header.
         """
         return "-- RAW RESPONSE FROM LLM --"
+    
+    @classmethod
+    def partial_recovery_header(cls) -> str:
+        """Format the partial data recovery header.
+        
+        Returns:
+            str: Formatted partial recovery header.
+        """
+        return f"{cls.INFO_PREFIX} Attempting partial data recovery..."
+    
+    @classmethod
+    def recovery_success_message(cls, recovered_items: list[str]) -> str:
+        """Format successful partial recovery message.
+        
+        Args:
+            recovered_items: List of items that were successfully recovered.
+            
+        Returns:
+            str: Formatted recovery success message.
+        """
+        items_text = ", ".join(recovered_items)
+        return f"{cls.SUCCESS_PREFIX} Partial recovery successful: {items_text}. Please try your query again."
+    
+    @classmethod
+    def recovery_failure_message(cls) -> str:
+        """Format partial recovery failure message.
+        
+        Returns:
+            str: Formatted recovery failure message.
+        """
+        return f"{cls.ERROR_PREFIX} Could not recover partial data from malformed response."
+    
+    @classmethod
+    def debugging_suggestion(cls, error_type: str) -> str:
+        """Format debugging suggestions for different error types.
+        
+        Args:
+            error_type: The type of error (syntax, validation, extraction, etc.).
+            
+        Returns:
+            str: Formatted debugging suggestion.
+        """
+        suggestions = {
+            "syntax": "The LLM response contains invalid JSON syntax. Check for missing commas, brackets, or quotes.",
+            "validation": "The JSON structure is missing required fields or has incorrect data types.",
+            "extraction": "Could not find valid JSON in the LLM response. The response may be conversational text.",
+            "structure": "The response is not a JSON object or has an unexpected format.",
+            "field_type": "A required field has the wrong data type. Check the field structure in the raw response.",
+            "schema": "The JSON doesn't match the expected schema with 'query' and 'papers' fields."
+        }
+        
+        suggestion = suggestions.get(error_type, "Review the raw response below for debugging information.")
+        return f"{cls.INFO_PREFIX} Debugging hint: {suggestion}"
     
     @classmethod
     def api_retry_message(cls, service: str, attempt: int, error: str) -> str:

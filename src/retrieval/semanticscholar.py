@@ -8,6 +8,7 @@ from typing import Optional
 import aiohttp
 
 from .models import RetrievedPaper
+from ..utils.message_formatter import MessageFormatter
 
 
 async def search_semantic_scholar(session: aiohttp.ClientSession, query: str, limit: int = 8) -> list[RetrievedPaper]:
@@ -25,7 +26,7 @@ async def search_semantic_scholar(session: aiohttp.ClientSession, query: str, li
             async with session.get(url, params=params, headers=headers, timeout=60) as r:
                 if r.status == 429:
                     retry_after = r.headers.get("Retry-After", "60")
-                    print(f"Semantic Scholar rate limited. Waiting {retry_after}s...")
+                    print(MessageFormatter.api_rate_limit_message("Semantic Scholar", retry_after))
                     await asyncio.sleep(int(retry_after))
                     continue
                 r.raise_for_status()
@@ -34,10 +35,10 @@ async def search_semantic_scholar(session: aiohttp.ClientSession, query: str, li
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             if attempt == max_retries - 1:
                 raise
-            print(f"Semantic Scholar attempt {attempt + 1} failed: {e}. Retrying...")
+            print(MessageFormatter.api_retry_message("Semantic Scholar", attempt + 1, str(e)))
             await asyncio.sleep(2 ** attempt)
     else:
-        print("Semantic Scholar: Max retries exceeded. Skipping this source.")
+        print(MessageFormatter.api_max_retries_message("Semantic Scholar"))
         return []
 
     results = []
