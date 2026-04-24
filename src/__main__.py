@@ -20,6 +20,8 @@ from .retrieval.semanticscholar import search_semantic_scholar
 from .retrieval.helpers import _dedupe
 from .retrieval.rendering import render_markdown
 from .analysis.llm import analysis_agent
+from .utils.input_handler import get_user_query
+from .utils.message_formatter import MessageFormatter
 
 
 async def run_research_helper(user_text: str, k_each: int = 8) -> None:
@@ -31,14 +33,13 @@ async def run_research_helper(user_text: str, k_each: int = 8) -> None:
                 search_semantic_scholar(session, user_text, limit=k_each),
             )
         except Exception as e:
-            print(f"Error fetching papers: {e}")
-            print("Check your internet connection and try again.")
+            print(MessageFormatter.network_error(str(e)))
             return
 
     top = _dedupe(openalex_papers + s2_papers)[:10]
 
     if not top:
-        print("No papers found. Try a different query.")
+        print(MessageFormatter.no_results_message())
         return
 
     payload_items = [
@@ -74,25 +75,84 @@ async def run_research_helper(user_text: str, k_each: int = 8) -> None:
         report = ResearchReport.model_validate(parsed)
         print(render_markdown(report))
     except Exception as e:
-        print(f"❌ Parsing Error: {e}")
-        print("-- RAW RESPONSE FROM LLM --")
+        print(MessageFormatter.parsing_error(str(e)))
+        print(MessageFormatter.raw_response_header())
         print(result.output)
 
 
+def run_interactive_mode() -> None:
+    """Run the research assistant in interactive mode.
+    
+    Displays welcome message, prompts for queries in a loop, processes each query,
+    and exits gracefully when the user enters an exit command or sends Ctrl+C.
+    
+    Requirements:
+        - 1.1: Enter interactive mode when no query argument provided
+        - 1.3: Process user-entered queries
+        - 2.1: Prompt for another query after processing
+        - 2.2: Process each query independently
+        - 2.3: Maintain session until explicit exit
+        - 2.4: Display separator between query results
+        - 5.1: Display welcome message
+        - 5.2: Include query entry instructions
+        - 5.3: Include exit instructions
+        - 3.4: Display farewell message on exit
+    """
+    # Display welcome message
+    print(MessageFormatter.welcome_message())
+    
+    try:
+        while True:
+            # Get user query
+            query = get_user_query()
+            
+            # Check for exit condition
+            if query is None:
+                break
+            
+            # Process the query
+            asyncio.run(run_research_helper(query))
+            
+            # Display separator between results
+            print(MessageFormatter.result_separator())
+    
+    except KeyboardInterrupt:
+        # Handle Ctrl+C gracefully
+        print()  # New line after ^C
+    
+    finally:
+        # Display farewell message
+        print(MessageFormatter.farewell_message())
+
+
 def main() -> None:
-    """Main entry point for the CLI."""
+    """Main entry point for the CLI.
+    
+    Detects operating mode based on query argument:
+    - If query provided: runs in batch mode (existing behavior)
+    - If no query: runs in interactive mode
+    
+    Requirements:
+        - 1.1: Enter interactive mode when no query argument provided
+        - 1.4: Preserve backward compatibility with batch mode
+    """
     parser = argparse.ArgumentParser(
         description="AI Research Assistant - Retrieve and analyze academic papers"
     )
     parser.add_argument(
         "query",
         nargs="?",
-        default="On-device LLM reasoning for IoT DDoS detection",
-        help="Research query (default: On-device LLM reasoning for IoT DDoS detection)"
+        help="Research query. If omitted, enters interactive mode where you can submit multiple queries."
     )
     args = parser.parse_args()
     
-    asyncio.run(run_research_helper(args.query))
+    # Detect mode based on query argument
+    if args.query:
+        # Batch mode: run single query and exit
+        asyncio.run(run_research_helper(args.query))
+    else:
+        # Interactive mode: prompt for queries in a loop
+        run_interactive_mode()
 
 
 if __name__ == "__main__":

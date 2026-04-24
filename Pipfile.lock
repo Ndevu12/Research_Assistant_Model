@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "acfea8684d87e4d9c6ddb87b02e71f16f1016f81a16f9f563aaa2b8c5c05be6b"
+            "sha256": "e14380feaf4b1f711b385a61202871f2b0a009506d63586e960706ca7d9283f2"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -1084,6 +1084,14 @@
             "markers": "python_version >= '3.9'",
             "version": "==8.7.1"
         },
+        "iniconfig": {
+            "hashes": [
+                "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730",
+                "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12"
+            ],
+            "markers": "python_version >= '3.10'",
+            "version": "==2.3.0"
+        },
         "jaraco.classes": {
             "hashes": [
                 "sha256:47a024b51d0239c0dd8c8540c6c7f484be3b8fcf0b2d85c13825780d3b3f3acd",
@@ -1626,6 +1634,14 @@
             "markers": "python_version >= '3.10'",
             "version": "==4.9.6"
         },
+        "pluggy": {
+            "hashes": [
+                "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3",
+                "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746"
+            ],
+            "markers": "python_version >= '3.9'",
+            "version": "==1.6.0"
+        },
         "prompt-toolkit": {
             "hashes": [
                 "sha256:28cde192929c8e7321de85de1ddbe736f1375148b02f2e17edd840042b1be855",
@@ -2049,6 +2065,15 @@
                 "sha256:299403e9ff44581cb9ba2ffeed69c7aa96a008622ad0c46cb575ca75b5b84273"
             ],
             "version": "==1.11.0"
+        },
+        "pytest": {
+            "hashes": [
+                "sha256:2c5efc453d45394fdd706ade797c0a81091eccd1d6e4bccfcd476e2b8e0ab5d9",
+                "sha256:b86ada508af81d19edeb213c681b1d48246c1a91d304c6c81a427674c17eb91c"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.10'",
+            "version": "==9.0.3"
         },
         "python-dateutil": {
             "hashes": [
