@@ -26,6 +26,9 @@ venv/
 ENV/
 env/
 
+# Loggings
+*.log
+
 # Pipenv
 .pipenv/
 
