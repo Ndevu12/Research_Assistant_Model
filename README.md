@@ -37,11 +37,19 @@ Research_Assistant_Model/
 │   ├── analysis/         # LLM analysis logic
 │   │   ├── __init__.py
 │   │   └── llm.py        # LLM agent configuration and analysis logic
-│   └── utils/            # Helper functions and setup scripts
+│   └── utils/            # Utility modules and logging
 │       ├── __init__.py
-│       ├── setup.py      # Python dependency installation
-│       ├── ollama.py     # Ollama installation and model setup
-│       └── run_setup.py  # Main setup orchestration
+│       ├── logging_system.py    # Structured logging
+│       ├── message_formatter.py # Output formatting
+│       ├── response_models.py   # Data models
+│       └── ... (other utilities)
+├── setups/               # Setup and configuration scripts
+│   ├── __init__.py       # Package exports
+│   ├── setup.py          # Python dependency installation
+│   ├── ollama.py         # Ollama installation and model setup
+│   ├── manager.py        # Main setup orchestrator
+│   ├── health_check.py   # Setup validation
+│   └── README.md         # Setup documentation
 ├── notebooks/            # Jupyter notebooks
 ├── tests/                # Unit and integration tests
 ├── data/                 # Data storage (ignored in git)
@@ -56,27 +64,7 @@ Research_Assistant_Model/
 
 ## Installation
 
-### Quick Start (Recommended)
-
-```bash
-# Install dependencies
-pipenv install
-
-# Run the assistant (auto-setup runs on first execution)
-pipenv run python -m src
-```
-
-The first run will automatically:
-1. Install Python dependencies (pydantic-ai, aiohttp, pydantic)
-2. Check/install Ollama (Arch/Ubuntu/macOS supported)
-3. Start Ollama server if needed
-4. Pull the `llama3.2:3b` model (~2GB download)
-
-**Note:** Initial setup may take several minutes depending on your internet connection.
-
-### Manual Setup
-
-If you prefer to set up components manually:
+### Quick Start (Recommended - Fully Automatic)
 
 ```bash
 # Install pipenv if not already installed
@@ -85,11 +73,32 @@ pip install pipenv
 # Install Python dependencies
 pipenv install
 
-# Run setup script explicitly
-pipenv run python -m src.utils.run_setup
-
-# Run the assistant
+# Run the assistant (auto-setup runs automatically on first execution)
 pipenv run python -m src
+```
+
+The first run will automatically:
+1. ✅ Check if Ollama is installed
+2. ✅ Install Ollama if needed (Arch/Ubuntu/macOS supported)
+3. ✅ Start Ollama server if not running
+4. ✅ Pull the `llama3.2:3b` model (~2GB download)
+5. ✅ Start the research assistant
+
+**Note:** Initial setup may take several minutes depending on your internet connection and system performance.
+
+### Manual Setup (Optional)
+
+If you prefer to set up components manually or troubleshoot:
+
+```bash
+# Check setup status
+python -m setups.health_check
+
+# Run setup explicitly
+python -m setups.manager
+
+# Run setup with custom model
+python -m setups.manager --model mistral
 ```
 
 ## Usage
@@ -164,29 +173,56 @@ Why this matches your query:
 
 ## Troubleshooting
 
+### Setup fails on first run
+The automatic setup handles most cases, but if it fails:
+
+```bash
+# Check setup status
+python -m setups.health_check
+
+# Run setup manually
+python -m setups.manager
+
+# Run setup with verbose logging
+python -m setups.manager --model llama3.2:3b
+```
+
 ### Ollama not found
-Install Ollama manually:
+If automatic setup fails to install Ollama, install it manually:
 - Arch Linux: `yay -S ollama` or `sudo pacman -S ollama`
 - Ubuntu/Debian: `curl -fsSL https://ollama.com/install.sh | sh`
 - macOS: `brew install ollama`
 - Windows: Download from https://ollama.com/download
 
-### Model not available
-Pull the model manually:
+Then run setup again:
 ```bash
+python -m setups.manager
+```
+
+### Model not available
+If the model fails to pull during setup:
+```bash
+# Pull manually
 ollama pull llama3.2:3b
+
+# Or run setup again
+python -m setups.manager
 ```
 
 ### Ollama server not running
-Start the server:
+The automatic setup starts the server, but if it stops:
 ```bash
+# Start manually
 ollama serve
+
+# Or run setup again
+python -m setups.manager
 ```
 
 ### Connection errors
 - Check your internet connection
 - Verify Ollama is running: `ollama list`
-- Ensure the model is pulled: `ollama pull llama3.2:3b`
+- Check logs: `tail -f logs/combined_*.log`
 
 ### Pipenv issues
 If pipenv is not found, install it first:
@@ -200,10 +236,10 @@ pipenv shell
 ```
 
 ### Import errors
-If you encounter import errors after the refactoring:
+If you encounter import errors:
 - Ensure you're using `pipenv run` to run commands
 - Verify the new structure is in place: `ls src/`
-- Run setup again: `pipenv run python -m src.utils.run_setup`
+- Run setup again: `python -m setups.manager`
 
 ## Architecture
 
@@ -265,7 +301,7 @@ from .analysis.llm import analysis_agent
 from src.retrieval.openalex import search_openalex
 from src.retrieval.semanticscholar import search_semantic_scholar
 from src.analysis.llm import analysis_agent
-from src.utils.run_setup import run_setup
+from setups import run_setup, print_report
 ```
 
 ### Dependencies
@@ -285,7 +321,7 @@ pipenv shell
 python -m src
 
 # Run setup script
-python -m src.utils.run_setup
+python -m setups.manager
 
 # Exit virtual environment
 exit

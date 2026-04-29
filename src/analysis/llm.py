@@ -1,34 +1,17 @@
 # -*- coding: utf-8 -*-
 """Analysis agent configuration for the analysis module."""
 
-from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
+
+from ..retrieval.models import PaperAnalysis, ResearchReport
 
 
 # Model configuration
 provider = OpenAIProvider(base_url="http://localhost:11434/v1", api_key="ollama")
 model_name = "llama3.2:3b"
 model = OpenAIChatModel(model_name=model_name, provider=provider)
-
-
-# Data schemas
-class PaperAnalysis(BaseModel):
-    """Analysis of a single paper."""
-    title: str
-    year: int | None = None
-    venue: str | None = None
-    url: str | None = None
-    doi: str | None = None
-    key_points: list[str] = Field(default_factory=list)
-    why_relevant: list[str] = Field(default_factory=list)
-
-
-class ResearchReport(BaseModel):
-    """Complete research report with query and paper analyses."""
-    query: str
-    papers: list[PaperAnalysis]
 
 
 # Analysis agent

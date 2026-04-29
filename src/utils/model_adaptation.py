@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .response_models import RequestContext
-from .logging_system import get_application_logger
+from .logging_system import logger
 
 
 class ModelType(Enum):
@@ -60,7 +60,7 @@ class ModelAdaptationEngine:
     
     def __init__(self):
         """Initialize model adaptation engine."""
-        self.logger = get_application_logger()
+        self.logger = logger
         self.model_patterns = self._initialize_model_patterns()
         self.adaptation_cache: Dict[str, ModelType] = {}
     
@@ -222,7 +222,7 @@ class ModelAdaptationEngine:
                     self.adaptation_cache[model_name] = model_type
                     self.logger.info(
                         f"Detected model type {model_type.value} for {model_name}",
-                        extra_data={'model_name': model_name, 'detected_type': model_type.value}
+                        extra={'model_name': model_name, 'detected_type': model_type.value}
                     )
                     return model_type
         
@@ -230,7 +230,7 @@ class ModelAdaptationEngine:
         self.adaptation_cache[model_name] = ModelType.GENERIC
         self.logger.info(
             f"Using generic adaptation for unknown model {model_name}",
-            extra_data={'model_name': model_name}
+            extra={'model_name': model_name}
         )
         return ModelType.GENERIC
     
@@ -261,7 +261,7 @@ class ModelAdaptationEngine:
             
             self.logger.debug(
                 f"Applying {len(pattern.cleaning_rules)} cleaning rules for {model_type.value}",
-                extra_data={'model_type': model_type.value, 'rules_count': len(pattern.cleaning_rules)}
+                extra={'model_type': model_type.value, 'rules_count': len(pattern.cleaning_rules)}
             )
             
             for rule_pattern, replacement in pattern.cleaning_rules:
@@ -274,7 +274,7 @@ class ModelAdaptationEngine:
                         adaptations_applied.append(AdaptationStrategy.RESPONSE_CLEANING)
                         self.logger.debug(
                             f"Applied cleaning rule: {rule_pattern[:50]}...",
-                            extra_data={
+                            extra={
                                 'rule_pattern': rule_pattern,
                                 'length_change': after_length - before_length
                             }
@@ -283,7 +283,7 @@ class ModelAdaptationEngine:
                     warnings.append(f"Failed to apply cleaning rule {rule_pattern}: {str(e)}")
                     self.logger.warning(
                         f"Regex error in cleaning rule: {str(e)}",
-                        extra_data={'rule_pattern': rule_pattern}
+                        extra={'rule_pattern': rule_pattern}
                     )
         
         # Apply generic cleaning if no specific patterns or if generic type
@@ -430,7 +430,7 @@ class ModelAdaptationEngine:
         
         self.logger.debug(
             f"Enhanced prompt for model type {self.detect_model_type(context).value}",
-            extra_data={
+            extra={
                 'model_type': self.detect_model_type(context).value,
                 'adjustments_applied': list(adjustments.keys())
             }

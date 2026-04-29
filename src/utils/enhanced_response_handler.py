@@ -21,7 +21,7 @@ from .retry_manager import RetryManager
 from .quality_monitor import QualityMonitor
 from .enhanced_validation import enhance_validation_result, should_attempt_retry, get_enhanced_prompt_for_retry, _enhanced_partial_recovery
 from .message_formatter import MessageFormatter
-from .logging_system import get_application_logger, StructuredLogger
+from .logging_system import logger
 from .model_adaptation import get_adaptation_engine
 
 
@@ -40,7 +40,7 @@ class EnhancedResponseHandler:
         self.adaptation_engine = get_adaptation_engine()
         
         # Set up logging integration
-        self.logger = get_application_logger()
+        self.logger = logger
         
         # Integrate quality monitor with logging system
         def log_quality_event(message: str, extra_data: dict) -> None:
@@ -48,7 +48,7 @@ class EnhancedResponseHandler:
             self.logger.log_event(
                 event_type='quality_monitoring',
                 message=message,
-                **extra_data
+                extra_data=extra_data
             )
         
         self.quality_monitor.set_external_logger(log_quality_event)
@@ -97,9 +97,11 @@ class EnhancedResponseHandler:
             operation="response_processing_start",
             duration_ms=0,
             success=True,
-            user_query_length=len(context.user_query),
-            model_name=context.model_name,
-            session_id=context.session_id
+            extra_data={
+                'user_query_length': len(context.user_query),
+                'model_name': context.model_name,
+                'session_id': context.session_id
+            }
         )
         
         # Import necessary functions from orchestrator
@@ -129,7 +131,7 @@ class EnhancedResponseHandler:
                     if delay > 0:
                         self.logger.info(
                             f"Applying retry delay of {delay}s before attempt {attempt + 1}",
-                            extra_data={
+                            extra={
                                 'retry_attempt': attempt + 1,
                                 'delay_seconds': delay,
                                 'session_id': context.session_id
@@ -158,7 +160,7 @@ class EnhancedResponseHandler:
                     raw_output = adaptation_result.adapted_response
                     self.logger.debug(
                         f"Applied model adaptation for {adaptation_result.model_type.value}",
-                        extra_data={
+                        extra={
                             'model_type': adaptation_result.model_type.value,
                             'adaptations': [a.value for a in adaptation_result.adaptations_applied],
                             'confidence': adaptation_result.confidence_score
@@ -243,9 +245,11 @@ class EnhancedResponseHandler:
                                 operation="response_processing_complete",
                                 duration_ms=duration_ms,
                                 success=True,
-                                processing_path=processing_path.value,
-                                total_attempts=attempt + 1,
-                                session_id=context.session_id
+                                extra_data={
+                                    'processing_path': processing_path.value,
+                                    'total_attempts': attempt + 1,
+                                    'session_id': context.session_id
+                                }
                             )
                             
                             return ProcessingResult(
@@ -284,7 +288,7 @@ class EnhancedResponseHandler:
                             # Log retry decision
                             self.logger.warning(
                                 f"Validation failed, attempting retry {attempt + 1}/{self.retry_manager.config.max_retries}",
-                                extra_data={
+                                extra={
                                     'error_type': enhanced_validation.error_type,
                                     'retry_strategy': enhanced_validation.retry_strategy.value if enhanced_validation.retry_strategy else None,
                                     'attempt': attempt + 1,
@@ -304,7 +308,7 @@ class EnhancedResponseHandler:
                             # No more retries - attempt recovery
                             self.logger.warning(
                                 f"Maximum retries reached, attempting recovery",
-                                extra_data={
+                                extra={
                                     'error_type': enhanced_validation.error_type,
                                     'total_attempts': attempt + 1,
                                     'session_id': context.session_id
@@ -328,7 +332,7 @@ class EnhancedResponseHandler:
                                 self.quality_monitor.record_success(attempt_context, processing_path)
                                 self.logger.info(
                                     f"Recovery successful using {recovery_result.recovery_method.value if recovery_result.recovery_method else 'unknown'} method",
-                                    extra_data={
+                                    extra={
                                         'recovery_method': recovery_result.recovery_method.value if recovery_result.recovery_method else None,
                                         'confidence_score': recovery_result.confidence_score,
                                         'session_id': context.session_id
@@ -340,7 +344,7 @@ class EnhancedResponseHandler:
                                 )
                                 self.logger.error(
                                     f"Recovery failed after {attempt + 1} attempts",
-                                    extra_data={
+                                    extra={
                                         'final_error_type': enhanced_validation.error_type,
                                         'total_attempts': attempt + 1,
                                         'session_id': context.session_id
@@ -365,7 +369,7 @@ class EnhancedResponseHandler:
                         )
                         self.logger.error(
                             f"JSON parsing failed on final attempt: {str(e)}",
-                            extra_data={
+                            extra={
                                 'error_line': e.lineno,
                                 'error_column': e.colno,
                                 'total_attempts': attempt + 1,
@@ -387,7 +391,7 @@ class EnhancedResponseHandler:
                     self.quality_monitor.record_retry(attempt_context, "json_syntax")
                     self.logger.warning(
                         f"JSON syntax error, retrying with enhanced prompt: {str(e)}",
-                        extra_data={
+                        extra={
                             'error_line': e.lineno,
                             'error_column': e.colno,
                             'attempt': attempt + 1,
@@ -407,7 +411,7 @@ class EnhancedResponseHandler:
                         )
                         self.logger.error(
                             f"JSON extraction failed on final attempt: {str(extraction_error)}",
-                            extra_data={
+                            extra={
                                 'total_attempts': attempt + 1,
                                 'session_id': context.session_id
                             }
@@ -427,7 +431,7 @@ class EnhancedResponseHandler:
                     self.quality_monitor.record_retry(attempt_context, "extraction")
                     self.logger.warning(
                         f"JSON extraction failed, retrying with enhanced prompt: {str(extraction_error)}",
-                        extra_data={
+                        extra={
                             'attempt': attempt + 1,
                             'session_id': context.session_id
                         }
@@ -445,7 +449,7 @@ class EnhancedResponseHandler:
                     )
                     self.logger.error(
                         f"Unexpected error on final attempt: {str(e)}",
-                        extra_data={
+                        extra={
                             'error_type': type(e).__name__,
                             'total_attempts': attempt + 1,
                             'session_id': context.session_id
@@ -464,7 +468,7 @@ class EnhancedResponseHandler:
                 self.quality_monitor.record_retry(attempt_context, "unexpected")
                 self.logger.warning(
                     f"Unexpected error, retrying with enhanced prompt: {str(e)}",
-                    extra_data={
+                    extra={
                         'error_type': type(e).__name__,
                         'attempt': attempt + 1,
                         'session_id': context.session_id
@@ -478,7 +482,7 @@ class EnhancedResponseHandler:
         # Should not reach here, but handle gracefully
         self.logger.error(
             "Response processing completed without returning result",
-            extra_data={'session_id': context.session_id}
+            extra={'session_id': context.session_id}
         )
         return ProcessingResult(
             success=False,

@@ -11,7 +11,7 @@ import re
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 
-from .logging_system import get_application_logger
+from .logging_system import logger
 
 
 @dataclass
@@ -40,7 +40,7 @@ class EnhancedJSONProcessor:
     
     def __init__(self):
         """Initialize JSON processor."""
-        self.logger = get_application_logger()
+        self.logger = logger
     
     def extract_json(self, text: str) -> JSONExtractionResult:
         """Extract JSON from text with multiple strategies.
@@ -66,13 +66,13 @@ class EnhancedJSONProcessor:
                     result.extraction_method = method_name
                     self.logger.debug(
                         f"Successfully extracted JSON using {method_name}",
-                        extra_data={'method': method_name, 'confidence': result.confidence_score}
+                        extra={'method': method_name, 'confidence': result.confidence_score}
                     )
                     return result
             except Exception as e:
                 self.logger.debug(
                     f"JSON extraction method {method_name} failed: {str(e)}",
-                    extra_data={'method': method_name, 'error': str(e)}
+                    extra={'method': method_name, 'error': str(e)}
                 )
                 continue
         

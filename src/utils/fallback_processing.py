@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .response_models import RecoveryConfig, RecoveryMethod, RecoveryResult
-from .logging_system import get_application_logger
+from .logging_system import logger
 
 
 class FallbackMethod(Enum):
@@ -45,7 +45,7 @@ class TextFallbackProcessor:
             config: Recovery configuration
         """
         self.config = config or RecoveryConfig()
-        self.logger = get_application_logger()
+        self.logger = logger
     
     def process_unstructured_response(
         self, 
@@ -63,7 +63,7 @@ class TextFallbackProcessor:
         """
         self.logger.info(
             "Attempting fallback processing for unstructured response",
-            extra_data={
+            extra={
                 'response_length': len(raw_response),
                 'query_length': len(user_query)
             }
@@ -89,7 +89,7 @@ class TextFallbackProcessor:
             except Exception as e:
                 self.logger.warning(
                     f"Fallback method {method.__name__} failed: {str(e)}",
-                    extra_data={'method': method.__name__}
+                    extra={'method': method.__name__}
                 )
                 continue
         
@@ -516,8 +516,6 @@ def enhance_partial_recovery_with_fallback(
     Returns:
         RecoveryResult: Enhanced recovery result with fallback data
     """
-    logger = get_application_logger()
-    
     # First try existing recovery methods
     from ..retrieval.orchestrator import _attempt_partial_recovery
     

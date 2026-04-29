@@ -4,14 +4,11 @@
 import asyncio
 import json
 import re
-import subprocess
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 import aiohttp
-from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
 from .helpers import _dedupe
 from .helpers_modules.json_extraction import extract_and_clean_json
@@ -21,35 +18,12 @@ from .models import PaperAnalysis, ResearchReport, RetrievedPaper
 from .openalex import search_openalex
 from .rendering import render_markdown
 from .semanticscholar import search_semantic_scholar
+from ..analysis.llm import analysis_agent
 from ..utils.message_formatter import MessageFormatter
 from ..utils.response_models import RecoveryConfig
+from ..utils.logging_system import logger
 
 
-# Run setup if Ollama is not available
-try:
-    subprocess.run(["ollama", "list"], capture_output=True, check=True, timeout=5)
-except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-    print("Ollama not found. Running setup...")
-    subprocess.run([sys.executable, "setup/run_setup.py"], check=True)
-
-# Model configuration
-provider = OpenAIProvider(base_url="http://localhost:11434/v1", api_key="ollama")
-model_name = "llama3.2:3b"
-model = OpenAIChatModel(model_name=model_name, provider=provider)
-
-analysis_agent = Agent(
-    model=model,
-    system_prompt=(
-        "You are a research assistant. "
-        "You MUST respond with a JSON object that has exactly two keys: "
-        '"query" (the user query string) and "papers" (a list of paper analysis objects). '
-        'Each paper object must have: "title", "year" (optional int), "venue" (optional string), '
-        '"url" (optional string), "doi" (optional string), "key_points" (list of strings), '
-        '"why_relevant" (list of strings). '
-        "Do not include any other fields or use a different structure. "
-        "Do not include conversational filler."
-    ),
-)
 
 
 async def run_research_helper(user_text: str, k_each: int = 8) -> None:

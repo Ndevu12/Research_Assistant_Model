@@ -9,75 +9,58 @@ Run with:
 
 import argparse
 import asyncio
-import json
-import re
+import sys
+from pathlib import Path
 
-import aiohttp
-
-from .retrieval.models import ResearchReport
-from .retrieval.openalex import search_openalex
-from .retrieval.semanticscholar import search_semantic_scholar
-from .retrieval.helpers import _dedupe
-from .retrieval.rendering import render_markdown
-from .analysis.llm import analysis_agent
+from .retrieval.orchestrator import run_research_helper
 from .utils.input_handler import get_user_query
 from .utils.message_formatter import MessageFormatter
+from .utils.logging_system import logger
 
 
-async def run_research_helper(user_text: str, k_each: int = 8) -> None:
-    """Run the research workflow with the given query."""
-    async with aiohttp.ClientSession() as session:
-        try:
-            openalex_papers, s2_papers = await asyncio.gather(
-                search_openalex(session, user_text, per_page=k_each),
-                search_semantic_scholar(session, user_text, limit=k_each),
-            )
-        except Exception as e:
-            print(MessageFormatter.network_error(str(e)))
-            return
-
-    top = _dedupe(openalex_papers + s2_papers)[:10]
-
-    if not top:
-        print(MessageFormatter.no_results_message())
-        return
-
-    payload_items = [
-        {
-            "title": p.title,
-            "abstract": p.abstract[:500] if p.abstract else "No abstract provided.",
-            "url": p.url or p.doi,
-        }
-        for p in top
-    ]
-
-    prompt = (
-        f"User Query: {user_text}\n\n"
-        f"Analyze these papers and return ONLY a JSON object.\n"
-        f"Data: {payload_items}"
-    )
-
-    result = await analysis_agent.run(prompt)
-
+def ensure_setup() -> bool:
+    """Ensure all setup requirements are met before running the application.
+    
+    Returns:
+        bool: True if setup is complete and successful, False otherwise
+    """
+    # Add setups to path - use absolute path from current working directory
+    import os
+    cwd = Path(os.getcwd())
+    setups_path = cwd / "setups"
+    
+    if not setups_path.exists():
+        logger.error(f"Setup directory not found at {setups_path}")
+        return False
+    
+    if str(setups_path) not in sys.path:
+        sys.path.insert(0, str(setups_path))
+    
     try:
-        raw_output = result.output
-        clean_json = re.sub(r"```json|```", "", raw_output).strip()
-        parsed = json.loads(clean_json)
-        
-        # Handle case where LLM returns wrong structure
-        if not isinstance(parsed, dict):
-            raise ValueError("Expected JSON object")
-        if "query" not in parsed or "papers" not in parsed:
-            raise ValueError(f"Missing required fields. Expected 'query' and 'papers', got: {list(parsed.keys())}")
-        if not isinstance(parsed["papers"], list):
-            raise ValueError("'papers' must be a list")
-        
-        report = ResearchReport.model_validate(parsed)
-        print(render_markdown(report))
-    except Exception as e:
-        print(MessageFormatter.parsing_error(str(e)))
-        print(MessageFormatter.raw_response_header())
-        print(result.output)
+        # Import setup modules
+        import health_check
+        import manager
+    except ImportError as e:
+        logger.error(f"Failed to import setup modules: {e}")
+        return False
+    
+    # Check current setup status
+    logger.info("Checking setup status...")
+    is_running, message = health_check.check_ollama_running()
+    if is_running:
+        logger.info("Setup is complete and ready to use")
+        return True
+    
+    # Setup is incomplete, run full setup
+    logger.warning("Setup incomplete. Running automatic setup...")
+    health_check.print_report()
+    
+    if not manager.run_setup():
+        logger.error("Automatic setup failed. Please run setup manually: python -m setups.manager")
+        return False
+    
+    logger.info("Setup completed successfully!")
+    return True
 
 
 def run_interactive_mode() -> None:
@@ -128,7 +111,7 @@ def run_interactive_mode() -> None:
 def main() -> None:
     """Main entry point for the CLI.
     
-    Detects operating mode based on query argument:
+    Ensures setup is complete, then detects operating mode based on query argument:
     - If query provided: runs in batch mode (existing behavior)
     - If no query: runs in interactive mode
     
@@ -136,6 +119,11 @@ def main() -> None:
         - 1.1: Enter interactive mode when no query argument provided
         - 1.4: Preserve backward compatibility with batch mode
     """
+    # Ensure setup is complete before proceeding
+    if not ensure_setup():
+        logger.error("Cannot proceed without completing setup")
+        sys.exit(1)
+    
     parser = argparse.ArgumentParser(
         description="AI Research Assistant - Retrieve and analyze academic papers"
     )
