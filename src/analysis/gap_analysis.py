@@ -121,6 +121,12 @@ async def analyze_gaps(
     )
     prompt = _build_gap_prompt(query, synthesis, clusters)
 
+    from ..utils.progress_reporter import get_progress_reporter
+
+    reporter = get_progress_reporter()
+    if reporter is not None:
+        reporter.set_activity("Analyzing research gaps with AI…")
+
     result = await response_handler.process_structured_response(
         agent,
         prompt,

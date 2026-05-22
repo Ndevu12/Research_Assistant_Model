@@ -88,6 +88,7 @@ class InteractiveResearchSession:
         *,
         output_format: str = "markdown",
         export_formats: list[str] | None = None,
+        stream_progress: bool | None = None,
     ) -> str:
         """Run the full pipeline for a new query and return rendered output."""
         from ..retrieval.orchestrator import run_research_with_result
@@ -99,6 +100,7 @@ class InteractiveResearchSession:
             settings=self.settings,
             session=self.session,
             store=self.store,
+            stream_progress=stream_progress,
         )
 
         self.last_report = report

@@ -9,6 +9,7 @@ from ..analysis.gap_analysis import GapAnalysisStage
 from ..analysis.synthesis import SynthesisStage
 from ..config.settings import AppSettings
 from ..core.context import ResearchSession
+from ..core.events import get_event_bus
 from ..core.pipeline import ResearchPipeline, ResearchPipelineResult
 from ..reporting.output import render_report_output
 from ..memory.store import MemoryStore, build_cache_key, build_config_hash
@@ -24,6 +25,11 @@ from ..retrieval.deduplication import DeduplicationStage
 from ..retrieval.models import EnhancedResearchReport, RankedPaper, RetrievedPaper
 from ..retrieval.retrieval_stage import RetrievalStage
 from ..utils.message_formatter import MessageFormatter
+from ..utils.progress_reporter import (
+    PipelineProgressReporter,
+    reset_progress_reporter,
+    set_progress_reporter,
+)
 
 
 def build_pipeline(settings: AppSettings) -> ResearchPipeline:
@@ -122,6 +128,8 @@ async def run_research_with_result(
     settings: AppSettings | None = None,
     session: ResearchSession | None = None,
     store: MemoryStore | None = None,
+    *,
+    stream_progress: bool | None = None,
 ) -> tuple[EnhancedResearchReport, ResearchPipelineResult]:
     """Run the pipeline and return both the report and full pipeline metadata."""
     resolved_settings = settings or AppSettings()
@@ -142,13 +150,27 @@ async def run_research_with_result(
         if cached:
             cache_hit_papers = cached.papers
 
-    pipeline = build_pipeline(resolved_settings)
-    initial_artifacts = {"cached_papers": cache_hit_papers} if cache_hit_papers else None
-    result = await pipeline.execute(
-        query,
-        session=resolved_session,
-        initial_artifacts=initial_artifacts,
+    show_progress = (
+        stream_progress
+        if stream_progress is not None
+        else resolved_settings.pipeline.stream_progress
     )
+    reporter = PipelineProgressReporter(enabled=show_progress)
+    reporter.attach(get_event_bus())
+    token = set_progress_reporter(reporter)
+    reporter.start(query)
+
+    try:
+        pipeline = build_pipeline(resolved_settings)
+        initial_artifacts = {"cached_papers": cache_hit_papers} if cache_hit_papers else None
+        result = await pipeline.execute(
+            query,
+            session=resolved_session,
+            initial_artifacts=initial_artifacts,
+        )
+    finally:
+        reporter.stop()
+        reset_progress_reporter(token)
 
     report = _resolve_report(result, query)
 
@@ -175,6 +197,7 @@ async def run_research_helper(
     output_path: str | None = None,
     session: ResearchSession | None = None,
     store: MemoryStore | None = None,
+    stream_progress: bool | None = None,
 ) -> Optional[EnhancedResearchReport]:
     """Run the research helper and print a report by default.
 
@@ -197,6 +220,7 @@ async def run_research_helper(
             settings=settings,
             session=session,
             store=store,
+            stream_progress=stream_progress,
         )
     except Exception as exc:
         print(MessageFormatter.network_error(str(exc)))
