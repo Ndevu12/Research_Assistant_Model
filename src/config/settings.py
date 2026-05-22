@@ -132,6 +132,7 @@ class PipelineConfig(BaseModel):
     continue_on_stage_failure: bool = True
     stage_timeout_seconds: int = 300
     synthesis_timeout_seconds: int = 600
+    stream_progress: bool = True
     debug: bool = False
     enabled_stages: dict[str, bool] = Field(
         default_factory=lambda: {

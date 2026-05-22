@@ -24,6 +24,7 @@ from .enhanced_validation import enhance_validation_result, should_attempt_retry
 from .message_formatter import MessageFormatter
 from .logging_system import logger
 from .model_adaptation import get_adaptation_engine
+from .progress_reporter import get_progress_reporter
 
 
 class EnhancedResponseHandler:
@@ -550,8 +551,17 @@ class EnhancedResponseHandler:
                         current_prompt, attempt_context
                     )
 
-                result = await agent.run(current_prompt)
-                raw_output = result.output
+                reporter = get_progress_reporter()
+                llm_label = f"Analyzing ({response_model.__name__})…"
+                if reporter is not None and reporter.enabled and attempt == 0:
+                    raw_output = await reporter.stream_agent_response(
+                        agent,
+                        current_prompt,
+                        label=llm_label,
+                    )
+                else:
+                    result = await agent.run(current_prompt)
+                    raw_output = result.output
 
                 if debug_info is not None:
                     debug_info["retry_attempts"].append({

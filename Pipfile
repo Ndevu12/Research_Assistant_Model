@@ -21,6 +21,7 @@ numpy = "*"
 aiosqlite = "*"
 hdbscan = "*"
 torch = {version = "*", index = "pytorch-cpu"}
+rich = "*"
 
 [dev-packages]
 

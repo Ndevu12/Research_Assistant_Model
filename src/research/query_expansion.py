@@ -182,12 +182,22 @@ async def expand_query_llm(
             f"Expand this research query into {config.max_variants} search variants "
             f"and {config.max_sub_questions} sub-questions: {query}"
         )
-        result = await agent.run(prompt)
+        from ..utils.progress_reporter import get_progress_reporter, stream_agent_text
+
+        reporter = get_progress_reporter()
+        if reporter is not None:
+            reporter.set_activity("Expanding query with AI…")
+
+        raw_output = await stream_agent_text(
+            agent,
+            prompt,
+            label="Expanding search queries…",
+        )
         import json
 
         from ..retrieval.helpers_modules.json_extraction import extract_and_clean_json
 
-        payload = json.loads(extract_and_clean_json(result.output))
+        payload = json.loads(extract_and_clean_json(raw_output))
         variants = payload.get("variants", [])
         sub_questions = payload.get("sub_questions", [])
         return (

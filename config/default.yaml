@@ -66,6 +66,7 @@ pipeline:
   continue_on_stage_failure: true
   stage_timeout_seconds: 300
   synthesis_timeout_seconds: 600
+  stream_progress: true
   debug: false
   enabled_stages:
     query_understanding: true

@@ -294,12 +294,21 @@ async def extract_papers(
             llm_extractions.append(_heuristic_extraction(paper))
             continue
 
+        title_preview = paper.paper.title[:72]
         logger.info(
             "LLM extracting paper %d/%d: %s",
             index,
             len(llm_targets),
             paper.paper.title[:80],
         )
+
+        from ..utils.progress_reporter import get_progress_reporter
+
+        reporter = get_progress_reporter()
+        if reporter is not None:
+            reporter.set_activity(
+                f"Analyzing paper {index}/{len(llm_targets)}: {title_preview}…"
+            )
 
         async with semaphore:
             extraction, llm_success = await _extract_single_paper(
@@ -369,6 +378,14 @@ async def synthesize_collective(
     prompt = _build_synthesis_prompt(query, extractions, clusters, ranked_papers)
 
     logger.info("Running LLM collective synthesis across %d paper(s)", len(extractions))
+    from ..utils.progress_reporter import get_progress_reporter
+
+    reporter = get_progress_reporter()
+    if reporter is not None:
+        reporter.set_activity(
+            f"Synthesizing insights across {len(extractions)} paper(s)…"
+        )
+
     result = await response_handler.process_structured_response(
         agent,
         prompt,

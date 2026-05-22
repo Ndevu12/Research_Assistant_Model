@@ -117,17 +117,20 @@ async def _run_session_query(
     *,
     output_format: str,
     export_formats: list[str] | None,
+    stream_progress: bool = True,
 ) -> str:
     return await session.run_full_query(
         query,
         output_format=output_format,
         export_formats=export_formats,
+        stream_progress=stream_progress,
     )
 
 
 def run_interactive_mode(
     output_format: str = "markdown",
     export_formats: list[str] | None = None,
+    stream_progress: bool = True,
 ) -> None:
     """Run the research assistant in interactive mode with session support."""
     print(MessageFormatter.welcome_message())
@@ -164,6 +167,7 @@ def run_interactive_mode(
                     query,
                     output_format=output_format,
                     export_formats=export_formats,
+                    stream_progress=stream_progress,
                 )
             )
             print(rendered)
@@ -213,10 +217,16 @@ def main() -> None:
         metavar="FILE",
         help="Write report to FILE (recommended for --format html or pdf)",
     )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Disable live progress streaming on stderr",
+    )
     args = parser.parse_args()
 
     export_formats = _parse_export_formats(getattr(args, "export_formats", None))
     output_format = getattr(args, "format", "markdown")
+    stream_progress = not getattr(args, "no_progress", False)
 
     if args.query:
         asyncio.run(
@@ -226,12 +236,14 @@ def main() -> None:
                 output_format=output_format,
                 export_formats=export_formats,
                 output_path=getattr(args, "output", None),
+                stream_progress=stream_progress,
             )
         )
     else:
         run_interactive_mode(
             output_format=output_format,
             export_formats=export_formats,
+            stream_progress=stream_progress,
         )
 
 

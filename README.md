@@ -50,6 +50,8 @@ On first run with the default Ollama provider, the assistant will:
 
 Use **Pipenv** for all commands (`pipenv run python -m src`). Running plain `python -m src` may miss dependencies such as `sentence-transformers`.
 
+While a query runs, the CLI streams **live progress to stderr**: pipeline stage checkmarks, sub-activities (e.g. “Analyzing paper 2/5”), and AI token previews during LLM calls. Disable with `--no-progress` or `RA_PIPELINE__STREAM_PROGRESS=false`.
+
 ## Usage
 
 ### Command line
@@ -175,6 +177,7 @@ RA_SYNTHESIS__LLM_ENABLED=true
 | `RA_SYNTHESIS__LLM_ENABLED` | `false` | Enable LLM-based synthesis (recommended for 8B+ local or cloud models) |
 | `RA_RANKING__TOP_K` | `25` | Papers kept after ranking |
 | `RA_PIPELINE__DEBUG` | `false` | Verbose pipeline logging |
+| `RA_PIPELINE__STREAM_PROGRESS` | `true` | Live stage/LLM progress on stderr (TTY only) |
 | `RA_DEBUG` | — | Alias for debug mode (`1`, `true`, `yes`) |
 | `RA_CONFIG_DIR` | — | Override path to `config/` directory |
 
