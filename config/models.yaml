@@ -1,0 +1,7 @@
+# LLM provider overrides (merged into AppSettings.llm)
+# Use "auto" for resource-based selection, or override with RA_LLM__MODEL in .env
+provider: ollama
+model: auto
+base_url: http://localhost:11434
+temperature: 0.2
+timeout_seconds: 120

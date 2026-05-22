@@ -82,12 +82,22 @@ success = run_setup(model_name="llama3.2:3b")
 
 ## Supported Models
 
-Any model available on [Ollama](https://ollama.com/library):
-- `llama3.2:3b` (default)
-- `mistral`
-- `neural-chat`
-- `codellama`
-- etc.
+Supported Ollama models are defined in `config/ollama_models.yaml`. Setup auto-selects
+the highest-priority model that fits your RAM and disk unless you pass `--model` or
+set `RA_LLM__MODEL` in your `.env` file.
+
+```bash
+# Auto-select (recommended)
+python -m setups.manager
+
+# Force a specific supported model via CLI
+python -m setups.manager --model llama3.1:8b
+
+# Or override auto-selection in .env (takes precedence over YAML config)
+# RA_LLM__MODEL=llama3.1:8b
+
+python -m setups.health_check
+```
 
 ## Troubleshooting
 

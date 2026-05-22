@@ -1,0 +1,93 @@
+llm:
+  provider: ollama
+  model: auto
+  base_url: http://localhost:11434
+  temperature: 0.2
+  timeout_seconds: 120
+
+embedding:
+  model: BAAI/bge-small-en-v1.5
+  batch_size: 32
+  cache_dir: data/embeddings
+
+ranking:
+  top_k: 25
+  weights:
+    semantic_relevance: 0.30
+    citation_count: 0.15
+    recency: 0.15
+    venue_quality: 0.10
+    abstract_completeness: 0.10
+    keyword_overlap: 0.10
+    author_prominence: 0.05
+    embedding_similarity: 0.05
+
+query_expansion:
+  llm_enabled: false
+  max_variants: 5
+  max_sub_questions: 3
+
+deduplication:
+  enabled: true
+  enable_embedding_dedup: true
+  embedding_similarity_threshold: 0.92
+
+clustering:
+  min_cluster_size: 2
+  min_samples: 1
+
+retrieval:
+  concurrency_limit: 4
+  per_provider_limit: 8
+  providers:
+    openalex:
+      enabled: true
+      limit: 8
+    semantic_scholar:
+      enabled: true
+      limit: 8
+    arxiv:
+      enabled: false
+      limit: 8
+    crossref:
+      enabled: false
+      limit: 8
+    pubmed:
+      enabled: false
+      limit: 8
+    core:
+      enabled: false
+      limit: 8
+    dblp:
+      enabled: false
+      limit: 8
+
+pipeline:
+  continue_on_stage_failure: true
+  stage_timeout_seconds: 300
+  synthesis_timeout_seconds: 600
+  debug: false
+  enabled_stages:
+    query_understanding: true
+    query_expansion: true
+    retrieval: true
+    deduplication: true
+    ranking: true
+    relevance_scoring: true
+    clustering: true
+    synthesis: true
+    gap_analysis: true
+    citation_export: true
+    report_generation: true
+
+memory:
+  db_path: data/research.db
+  cache_enabled: false
+
+synthesis:
+  llm_enabled: false
+  max_llm_papers: 3
+  extraction_max_retries: 0
+  collective_max_retries: 0
+  concurrency: 2
+  circuit_breaker_failures: 2

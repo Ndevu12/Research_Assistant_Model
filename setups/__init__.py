@@ -2,7 +2,13 @@
 
 from .setup import install_python_deps
 from .ollama import install_ollama, setup_ollama
-from .health_check import check_python_deps, check_ollama_installed, check_ollama_running, check_model_available, print_report
+from .health_check import (
+    check_python_deps,
+    check_ollama_installed,
+    check_ollama_running,
+    check_model_available,
+    print_report,
+)
 from .manager import run_setup
 
 __all__ = [

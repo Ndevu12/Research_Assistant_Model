@@ -50,6 +50,14 @@ Thumbs.db
 # Environment variables
 .env
 
+# Embedding cache
+data/embeddings/
+
+# Runtime artifacts
+data/*.db
+logs/
+reports/
+
 # Python cache
 __pycache__/
 pytest_cache/

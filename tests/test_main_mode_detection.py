@@ -227,7 +227,12 @@ class TestModeDetectionEdgeCases:
         import argparse
         
         # Mock argparse to return None for query
-        mock_args = argparse.Namespace(query=None)
+        mock_args = argparse.Namespace(
+            query=None,
+            format="markdown",
+            export_formats=None,
+            session=False,
+        )
         
         with patch('argparse.ArgumentParser.parse_args', return_value=mock_args):
             with patch('src.__main__.run_interactive_mode') as mock_interactive:
