@@ -22,7 +22,7 @@ def _partial_report(title: str = "Test Paper 1") -> EnhancedResearchReport:
             )
         ],
         synthesis=SynthesisResult(
-            disagreements=["Full disagreement analysis requires LLM synthesis"],
+            disagreements=["Cross-paper disagreement analysis limited in heuristic mode."],
             gaps=["Limited cross-paper comparison for query: test query"],
         ),
     )

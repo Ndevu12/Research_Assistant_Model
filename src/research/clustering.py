@@ -14,6 +14,7 @@ from ..core.context import PipelineContext, StageResult
 from ..core.paper_adapters import ensure_ranked_papers
 from ..embeddings.base import EmbeddingProvider
 from ..retrieval.models import PaperCluster, RankedPaper
+from .embedding_context import get_paper_embeddings
 
 if TYPE_CHECKING:
     from ..config.settings import ClusteringConfig
@@ -88,10 +89,101 @@ def _fallback_single_cluster(papers: list[RankedPaper]) -> list[PaperCluster]:
     ]
 
 
+def _extract_tokens(text: str) -> list[str]:
+    tokens = re.findall(r"\b[a-z]{4,}\b", text.lower())
+    return [token for token in tokens if token not in _STOP_WORDS]
+
+
+def _macro_cluster_count(noise_count: int, config: ClusteringConfig) -> int:
+    if noise_count <= 1:
+        return noise_count
+    return min(config.max_macro_clusters, noise_count)
+
+
+def _merge_noise_into_macro_clusters(
+    noise_papers: list[RankedPaper],
+    config: ClusteringConfig,
+) -> list[PaperCluster]:
+    """Group HDBSCAN noise papers into keyword macro-themes instead of singletons."""
+    if not noise_papers:
+        return []
+
+    if len(noise_papers) == 1:
+        theme, summary = _label_cluster(noise_papers)
+        return [
+            PaperCluster(
+                theme=f"Theme: {theme}",
+                summary=summary,
+                paper_ids=[noise_papers[0].paper.paper_id],
+            )
+        ]
+
+    doc_tokens = [_extract_tokens(_paper_text(paper)) for paper in noise_papers]
+    vocabulary = sorted({token for tokens in doc_tokens for token in tokens})
+    if not vocabulary:
+        theme, summary = _label_cluster(noise_papers)
+        return [
+            PaperCluster(
+                theme=f"Theme: {theme}",
+                summary=summary,
+                paper_ids=[paper.paper.paper_id for paper in noise_papers],
+            )
+        ]
+
+    term_index = {term: index for index, term in enumerate(vocabulary)}
+    matrix = np.zeros((len(noise_papers), len(vocabulary)), dtype=np.float32)
+    for row, tokens in enumerate(doc_tokens):
+        counts = Counter(tokens)
+        for term, count in counts.items():
+            matrix[row, term_index[term]] = float(count)
+
+    cluster_count = _macro_cluster_count(len(noise_papers), config)
+    if cluster_count <= 1:
+        theme, summary = _label_cluster(noise_papers)
+        return [
+            PaperCluster(
+                theme=f"Theme: {theme}",
+                summary=summary,
+                paper_ids=[paper.paper.paper_id for paper in noise_papers],
+            )
+        ]
+
+    try:
+        from sklearn.cluster import KMeans
+
+        labels = KMeans(n_clusters=cluster_count, random_state=0, n_init=10).fit_predict(matrix)
+    except Exception:
+        theme, summary = _label_cluster(noise_papers)
+        return [
+            PaperCluster(
+                theme=f"Theme: {theme}",
+                summary=summary,
+                paper_ids=[paper.paper.paper_id for paper in noise_papers],
+            )
+        ]
+
+    grouped: dict[int, list[RankedPaper]] = {}
+    for index, label in enumerate(labels):
+        grouped.setdefault(int(label), []).append(noise_papers[index])
+
+    output: list[PaperCluster] = []
+    for group in grouped.values():
+        theme, summary = _label_cluster(group)
+        output.append(
+            PaperCluster(
+                theme=f"Theme: {theme}",
+                summary=summary,
+                paper_ids=[paper.paper.paper_id for paper in group],
+            )
+        )
+    return output
+
+
 def cluster_papers(
     ranked_papers: list[RankedPaper],
     config: ClusteringConfig | None = None,
     embedder: EmbeddingProvider | None = None,
+    paper_embeddings: dict[str, np.ndarray] | None = None,
 ) -> list[PaperCluster]:
     """Cluster ranked papers into thematic groups."""
     if config is None:
@@ -105,16 +197,21 @@ def cluster_papers(
     if len(ranked_papers) < config.min_cluster_size:
         return _fallback_single_cluster(ranked_papers)
 
-    if embedder is None:
-        from ..embeddings import try_create_embedding_provider
+    from .embedding_context import resolve_paper_embedding_matrix
 
-        embedder = try_create_embedding_provider()
+    embeddings = resolve_paper_embedding_matrix(ranked_papers, paper_embeddings)
 
-    if embedder is None:
-        return _fallback_single_cluster(ranked_papers)
+    if embeddings is None:
+        if embedder is None:
+            from ..embeddings import try_create_embedding_provider
 
-    texts = [_paper_text(paper) for paper in ranked_papers]
-    embeddings = embedder.embed_texts(texts)
+            embedder = try_create_embedding_provider()
+
+        if embedder is None:
+            return _fallback_single_cluster(ranked_papers)
+
+        texts = [_paper_text(paper) for paper in ranked_papers]
+        embeddings = embedder.embed_texts(texts)
 
     try:
         labels = _cluster_with_hdbscan(embeddings, config)
@@ -126,21 +223,12 @@ def cluster_papers(
         bucket = int(label)
         clusters.setdefault(bucket, []).append(ranked_papers[index])
 
+    noise_papers = clusters.pop(-1, [])
+    noise_ratio = len(noise_papers) / len(ranked_papers)
+
     output: list[PaperCluster] = []
     for label in sorted(clusters):
         group = clusters[label]
-        if label == -1:
-            for ranked in group:
-                theme, summary = _label_cluster([ranked])
-                output.append(
-                    PaperCluster(
-                        theme=f"Unclustered: {theme}",
-                        summary=summary,
-                        paper_ids=[ranked.paper.paper_id],
-                    )
-                )
-            continue
-
         theme, summary = _label_cluster(group)
         output.append(
             PaperCluster(
@@ -149,6 +237,20 @@ def cluster_papers(
                 paper_ids=[paper.paper.paper_id for paper in group],
             )
         )
+
+    if noise_papers:
+        if noise_ratio > config.noise_merge_threshold:
+            output.extend(_merge_noise_into_macro_clusters(noise_papers, config))
+        else:
+            for ranked in noise_papers:
+                theme, summary = _label_cluster([ranked])
+                output.append(
+                    PaperCluster(
+                        theme=f"Unclustered: {theme}",
+                        summary=summary,
+                        paper_ids=[ranked.paper.paper_id],
+                    )
+                )
 
     if not output:
         return _fallback_single_cluster(ranked_papers)
@@ -203,6 +305,7 @@ class ClusteringStage:
             ranked_papers=ranked,
             config=ctx.config.clustering,
             embedder=embedder,
+            paper_embeddings=get_paper_embeddings(ctx) or None,
         )
 
         duration_ms = (time.perf_counter() - started) * 1000

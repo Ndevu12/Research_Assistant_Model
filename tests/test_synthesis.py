@@ -15,6 +15,7 @@ from src.analysis.gap_analysis import (
     _heuristic_gap_analysis,
 )
 from src.analysis.synthesis import (
+    HEURISTIC_DISAGREEMENT_PLACEHOLDER,
     SynthesisStage,
     _heuristic_extraction,
     _heuristic_synthesis,
@@ -47,7 +48,12 @@ def _paper(title: str, **kwargs: object) -> RetrievedPaper:
 
 
 def _ranked(title: str, **kwargs: object) -> RankedPaper:
-    return RankedPaper(paper=_paper(title, **kwargs), rank_score=0.9)
+    score_breakdown = kwargs.pop("score_breakdown", {})
+    return RankedPaper(
+        paper=_paper(title, **kwargs),
+        rank_score=0.9,
+        score_breakdown=score_breakdown,
+    )
 
 
 def _mock_handler_success(data: object) -> EnhancedResponseHandler:
@@ -194,6 +200,72 @@ class TestHeuristicSynthesis:
         assert synthesis.datasets
         assert synthesis.methodologies
         assert synthesis.gaps
+        assert synthesis.disagreements == [HEURISTIC_DISAGREEMENT_PLACEHOLDER]
+
+    def test_heuristic_synthesis_prefers_top_embedding_quartile(self) -> None:
+        ranked = [
+            _ranked(
+                "On-topic transformer",
+                doi="10.1000/on-topic",
+                abstract="Self-attention improves transformer NLP models.",
+                score_breakdown={"embedding_similarity": 0.9},
+            ),
+            _ranked(
+                "Off-topic air pollution",
+                doi="10.1000/off-topic",
+                abstract="Air pollutant transformer protein binding.",
+                score_breakdown={"embedding_similarity": 0.1},
+            ),
+        ]
+        extractions = [
+            PaperExtraction(
+                paper_id="10.1000/on-topic",
+                title="On-topic transformer",
+                findings=["Self-attention enables parallel transformer training."],
+            ),
+            PaperExtraction(
+                paper_id="10.1000/off-topic",
+                title="Off-topic air pollution",
+                findings=["Air pollutant transformer protein shows high affinity."],
+            ),
+        ]
+        clusters = [
+            PaperCluster(
+                theme="Transformers",
+                summary="NLP papers",
+                paper_ids=["10.1000/on-topic"],
+            ),
+        ]
+
+        synthesis = _heuristic_synthesis(
+            "transformer attention mechanisms",
+            extractions,
+            clusters,
+            ranked_papers=ranked,
+        )
+
+        assert synthesis.agreements
+        assert "transformer" in synthesis.agreements[0].lower()
+        assert "air pollutant" not in " ".join(synthesis.agreements).lower()
+
+    def test_heuristic_synthesis_reports_conflicts_when_detected(self) -> None:
+        extractions = [
+            PaperExtraction(
+                paper_id="a",
+                title="Paper A",
+                findings=["The model outperforms all baselines."],
+            ),
+            PaperExtraction(
+                paper_id="b",
+                title="Paper B",
+                findings=["The approach underperforms existing methods."],
+            ),
+        ]
+
+        synthesis = _heuristic_synthesis("model comparison", extractions, [])
+
+        assert synthesis.disagreements
+        assert synthesis.disagreements != [HEURISTIC_DISAGREEMENT_PLACEHOLDER]
 
     def test_heuristic_gap_analysis_expands_synthesis(self) -> None:
         synthesis = SynthesisResult(

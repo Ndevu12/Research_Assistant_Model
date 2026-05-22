@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import re
 import time
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from ..core.context import PipelineContext, StageResult
 from ..embeddings.base import EmbeddingProvider
+from ..research.metadata_sanity import metadata_quality_key, sanitize_papers_metadata
 from .models import RetrievedPaper
 
 if TYPE_CHECKING:
@@ -25,33 +27,75 @@ def normalize_title(title: str) -> str:
     return normalized
 
 
+def _union_find_parent(parent: list[int], index: int) -> int:
+    while parent[index] != index:
+        parent[index] = parent[parent[index]]
+        index = parent[index]
+    return index
+
+
+def _union_find_merge(parent: list[int], left: int, right: int) -> None:
+    left_root = _union_find_parent(parent, left)
+    right_root = _union_find_parent(parent, right)
+    if left_root != right_root:
+        parent[left_root] = right_root
+
+
+def _select_best_duplicate(candidates: list[RetrievedPaper]) -> RetrievedPaper:
+    """Keep the highest-quality record from a duplicate cluster."""
+    return max(candidates, key=metadata_quality_key)
+
+
 def dedupe_by_metadata(papers: list[RetrievedPaper]) -> list[RetrievedPaper]:
-    """Remove duplicate papers based on DOI or normalized title."""
-    seen_dois: set[str] = set()
-    seen_titles: set[str] = set()
-    output: list[RetrievedPaper] = []
-    for paper in papers:
-        doi_key = paper.doi.lower().strip() if paper.doi else None
+    """Remove duplicate papers based on DOI or normalized title.
+
+    Duplicate clusters are merged by keeping the highest-quality record.
+    Generic metadata checks are applied before grouping.
+    """
+    if not papers:
+        return []
+
+    sanitized = sanitize_papers_metadata(papers)
+    parent = list(range(len(sanitized)))
+    title_index: dict[str, int] = {}
+    doi_index: dict[str, int] = {}
+
+    for index, paper in enumerate(sanitized):
         title_key = normalize_title(paper.title)
+        if title_key in title_index:
+            _union_find_merge(parent, index, title_index[title_key])
+        else:
+            title_index[title_key] = index
 
-        if doi_key and doi_key in seen_dois:
-            continue
-        if title_key in seen_titles:
-            continue
+        if paper.doi:
+            doi_key = paper.doi.lower().strip()
+            if doi_key in doi_index:
+                _union_find_merge(parent, index, doi_index[doi_key])
+            else:
+                doi_index[doi_key] = index
 
-        if doi_key:
-            seen_dois.add(doi_key)
-        seen_titles.add(title_key)
-        output.append(paper)
+    clusters: dict[int, list[int]] = defaultdict(list)
+    for index in range(len(sanitized)):
+        clusters[_union_find_parent(parent, index)].append(index)
+
+    output: list[RetrievedPaper] = []
+    emitted_roots: set[int] = set()
+    for index, paper in enumerate(sanitized):
+        root = _union_find_parent(parent, index)
+        if root in emitted_roots:
+            continue
+        emitted_roots.add(root)
+        cluster = [sanitized[member_index] for member_index in clusters[root]]
+        if len(cluster) == 1:
+            output.append(paper)
+        else:
+            output.append(_select_best_duplicate(cluster))
     return output
 
 
-def _paper_preference_key(paper: RetrievedPaper) -> tuple[int, int, int]:
+def _paper_preference_key(paper: RetrievedPaper) -> tuple[int, int, int, int, int]:
     """Rank duplicates; higher values are preferred to keep."""
-    abstract_len = len(paper.abstract or "")
-    citation_count = paper.citation_count or 0
-    metadata_score = int(bool(paper.doi)) + int(bool(paper.url))
-    return (citation_count, abstract_len, metadata_score)
+    return metadata_quality_key(paper)
 
 
 def _paper_dedup_text(paper: RetrievedPaper) -> str:

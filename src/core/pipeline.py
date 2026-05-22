@@ -12,6 +12,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+from ..config.resolve_llm_features import resolve_effective_settings
 from ..config.settings import AppSettings
 from ..utils.logging_system import logger
 from .context import PipelineContext, ResearchSession, StageResult
@@ -126,7 +127,8 @@ class ResearchPipeline:
         initial_artifacts: dict[str, Any] | None = None,
     ) -> ResearchPipelineResult:
         """Run all enabled stages sequentially."""
-        ctx = PipelineContext.create(query=query, config=self.config, session=session)
+        effective_config = resolve_effective_settings(self.config)
+        ctx = PipelineContext.create(query=query, config=effective_config, session=session)
         if initial_artifacts:
             for key, value in initial_artifacts.items():
                 ctx.set_artifact(key, value)
