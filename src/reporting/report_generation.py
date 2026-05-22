@@ -5,7 +5,11 @@ from __future__ import annotations
 
 import time
 
+from ..analysis.synthesis import embedding_similarity_for_paper, sentence_aligns_with_query
+from ..config.settings import RelevanceScoringConfig
 from ..core.context import PipelineContext, StageResult
+from ..research.query_expansion import extract_core_concepts
+from ..research.relevance_scoring import compute_adaptive_embedding_floor
 from ..retrieval.models import (
     EnhancedResearchReport,
     GapAnalysisResult,
@@ -16,32 +20,92 @@ from ..retrieval.models import (
 )
 
 
+def _cluster_theme_list(clusters: list[PaperCluster]) -> str:
+    themes = [cluster.theme for cluster in clusters if cluster.theme]
+    if not themes:
+        return "general topics"
+    return ", ".join(themes[:5])
+
+
+def _top_centroid_themes(clusters: list[PaperCluster]) -> str:
+    themes = [cluster.theme for cluster in clusters[:3] if cluster.theme]
+    if not themes:
+        return "core research themes"
+    return ", ".join(themes)
+
+
+def _embedding_similarities(ranked_papers: list[RankedPaper]) -> list[float]:
+    return [
+        float(paper.score_breakdown["embedding_similarity"])
+        for paper in ranked_papers
+        if "embedding_similarity" in paper.score_breakdown
+    ]
+
+
+def _summary_embedding_floor(
+    ranked_papers: list[RankedPaper],
+    config: RelevanceScoringConfig,
+) -> float:
+    similarities = _embedding_similarities(ranked_papers)
+    if not similarities or not config.adaptive_embedding:
+        return config.min_embedding_similarity
+    return compute_adaptive_embedding_floor(
+        similarities,
+        config=config,
+        corpus_size=len(ranked_papers),
+    )
+
+
+def _validated_finding_snippet(
+    synthesis: SynthesisResult | None,
+    query: str,
+    ranked_papers: list[RankedPaper],
+    embedding_floor: float,
+) -> str | None:
+    if not ranked_papers or not synthesis or not synthesis.agreements:
+        return None
+
+    top_similarity = max(embedding_similarity_for_paper(paper) for paper in ranked_papers)
+    if top_similarity < embedding_floor:
+        return None
+
+    concepts = extract_core_concepts(query)
+    for agreement in synthesis.agreements:
+        if sentence_aligns_with_query(agreement, concepts):
+            return agreement
+    return None
+
+
 def _build_executive_summary(
     query: str,
     synthesis: SynthesisResult | None,
     clusters: list[PaperCluster],
     paper_count: int,
+    ranked_papers: list[RankedPaper] | None = None,
+    relevance_config: RelevanceScoringConfig | None = None,
 ) -> str:
-    parts: list[str] = []
+    if paper_count == 0:
+        return f"No papers were retrieved for: {query}."
 
-    if synthesis and synthesis.agreements:
-        parts.append(synthesis.agreements[0])
+    cluster_themes = _cluster_theme_list(clusters)
+    focus_themes = _top_centroid_themes(clusters)
+    summary = (
+        f"{query}: review of {paper_count} paper(s) across themes "
+        f"{cluster_themes}. Key focus areas include {focus_themes}."
+    )
 
-    if clusters:
-        themes = ", ".join(cluster.theme for cluster in clusters[:3])
-        parts.append(
-            f"Analysis of {paper_count} paper(s) grouped into "
-            f"{len(clusters)} theme(s): {themes}."
-        )
-    elif paper_count:
-        parts.append(f"Review of {paper_count} retrieved paper(s) for: {query}.")
-    else:
-        parts.append(f"No papers were retrieved for: {query}.")
+    config = relevance_config or RelevanceScoringConfig()
+    embedding_floor = _summary_embedding_floor(ranked_papers or [], config)
+    snippet = _validated_finding_snippet(
+        synthesis,
+        query,
+        ranked_papers or [],
+        embedding_floor,
+    )
+    if snippet:
+        summary = f"{summary} Notable finding: {snippet}"
 
-    if synthesis and synthesis.trends:
-        parts.append(synthesis.trends[0])
-
-    return " ".join(parts)
+    return summary
 
 
 def _build_timeline(
@@ -83,6 +147,8 @@ def assemble_report(ctx: PipelineContext, exports: dict[str, str]) -> EnhancedRe
             synthesis,
             clusters,
             len(analyses),
+            ranked_papers=ranked_papers,
+            relevance_config=ctx.config.relevance_scoring,
         ),
         papers=analyses,
         clusters=clusters,

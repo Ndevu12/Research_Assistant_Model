@@ -1,11 +1,15 @@
 # Ranking weight overrides (merged into AppSettings.ranking)
 top_k: 25
 weights:
-  semantic_relevance: 0.30
-  citation_count: 0.15
-  recency: 0.15
+  semantic_relevance: 0.20
+  citation_count: 0.08
+  recency: 0.08
   venue_quality: 0.10
   abstract_completeness: 0.10
   keyword_overlap: 0.10
   author_prominence: 0.05
-  embedding_similarity: 0.05
+  embedding_similarity: 0.30
+domain_penalty_multiplier: 0.5
+outlier_embedding_gap: 0.12
+keyword_collision_max_sim: 0.40
+canonical_boost: 0.0

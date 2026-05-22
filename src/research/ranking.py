@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 import re
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -13,6 +14,9 @@ import numpy as np
 from ..core.context import PipelineContext, StageResult
 from ..embeddings.base import EmbeddingProvider
 from ..retrieval.models import RankedPaper, RetrievedPaper
+from .canonical_works import CanonicalWork, load_canonical_works, match_canonical_work
+from .embedding_context import store_ranking_embedding_result
+from .metadata_sanity import sanitize_papers_metadata
 
 if TYPE_CHECKING:
     from ..config.settings import RankingConfig, RankingWeights
@@ -64,6 +68,26 @@ _KNOWN_VENUES = {
     "jmlr",
 }
 
+_GENERIC_QUERY_TERMS = frozenset(
+    {
+        "mechanism",
+        "mechanisms",
+        "method",
+        "methods",
+        "approach",
+        "approaches",
+        "application",
+        "applications",
+        "model",
+        "models",
+        "system",
+        "systems",
+        "based",
+        "using",
+        "recent",
+    }
+)
+
 
 def _extract_query_terms(query: str) -> set[str]:
     words = re.findall(r"\b\w+\b", query.lower())
@@ -81,6 +105,86 @@ def _paper_text(paper: RetrievedPaper) -> str:
     return " ".join(parts)
 
 
+def _paper_text_lower(paper: RetrievedPaper) -> str:
+    return _paper_text(paper).lower()
+
+
+def _core_query_terms(query_terms: set[str]) -> list[str]:
+    return sorted(term for term in query_terms if term not in _GENERIC_QUERY_TERMS)
+
+
+def _term_matches_text(term: str, text: str) -> bool:
+    if term in text:
+        return True
+    if term.endswith("s") and term[:-1] in text:
+        return True
+    if f"{term}s" in text:
+        return True
+    return False
+
+
+def applies_domain_penalty(query: str, paper: RetrievedPaper) -> bool:
+    """Return True when a multi-concept query is only partially matched."""
+    query_terms = _extract_query_terms(query)
+    core_terms = _core_query_terms(query_terms)
+    if len(core_terms) < 2:
+        return False
+
+    text = _paper_text_lower(paper)
+    matched_core = [term for term in core_terms if _term_matches_text(term, text)]
+    return len(matched_core) < len(core_terms)
+
+
+def embedding_outlier(
+    embedding_sim: float | None,
+    top_k_mean_sim: float | None,
+    outlier_gap: float,
+) -> bool:
+    """Return True when a paper's embedding similarity is far below the corpus top-k mean."""
+    if embedding_sim is None or top_k_mean_sim is None:
+        return False
+    return embedding_sim < top_k_mean_sim - outlier_gap
+
+
+def keyword_collision(
+    paper: RetrievedPaper,
+    query_terms: set[str],
+    embedding_sim: float | None,
+    max_sim: float,
+) -> bool:
+    """Return True when keyword overlap is high but semantic similarity is low."""
+    if embedding_sim is None:
+        return False
+    overlap = signal_keyword_overlap(paper, query_terms)
+    if overlap is None or overlap < 0.5:
+        return False
+    return embedding_sim < max_sim
+
+
+def _top_k_mean_embedding_similarity(
+    embedding_sims: list[float | None],
+    top_k: int = 5,
+) -> float | None:
+    valid = [sim for sim in embedding_sims if sim is not None]
+    if not valid:
+        return None
+    top_values = sorted(valid, reverse=True)[:top_k]
+    return sum(top_values) / len(top_values)
+
+
+def canonical_score_boost(
+    paper: RetrievedPaper,
+    works: list[CanonicalWork],
+    boost: float,
+) -> float:
+    """Return a capped score boost when the paper matches a canonical registry entry."""
+    if boost <= 0.0 or not works:
+        return 0.0
+    if match_canonical_work(paper.title, works) is None:
+        return 0.0
+    return boost
+
+
 def signal_keyword_overlap(paper: RetrievedPaper, query_terms: set[str]) -> float | None:
     if not query_terms:
         return None
@@ -92,7 +196,21 @@ def signal_keyword_overlap(paper: RetrievedPaper, query_terms: set[str]) -> floa
     return min(len(matches) / len(query_terms), 1.0)
 
 
-def signal_semantic_relevance(paper: RetrievedPaper, query_terms: set[str]) -> float | None:
+def signal_semantic_relevance(
+    paper: RetrievedPaper,
+    query_terms: set[str],
+    query_embedding: np.ndarray | None = None,
+    paper_embedding: np.ndarray | None = None,
+    embedder: EmbeddingProvider | None = None,
+) -> float | None:
+    if (
+        query_embedding is not None
+        and paper_embedding is not None
+        and embedder is not None
+    ):
+        similarity = embedder.similarity(query_embedding, paper_embedding)
+        return max(min(similarity, 1.0), 0.0)
+
     overlap = signal_keyword_overlap(paper, query_terms)
     if overlap is None:
         return None
@@ -186,28 +304,63 @@ def score_paper(
     query_embedding: np.ndarray | None = None,
     paper_embedding: np.ndarray | None = None,
     embedder: EmbeddingProvider | None = None,
+    domain_penalty: float = 0.5,
+    outlier_embedding_gap: float = 0.12,
+    keyword_collision_max_sim: float = 0.40,
+    top_k_mean_embedding_sim: float | None = None,
+    canonical_boost: float = 0.0,
+    canonical_works: list[CanonicalWork] | None = None,
 ) -> RankedPaper:
     query_terms = _extract_query_terms(query)
+    embedding_sim = signal_embedding_similarity(
+        paper,
+        query_embedding,
+        paper_embedding,
+        embedder,
+    )
     signals: dict[str, float | None] = {
-        "semantic_relevance": signal_semantic_relevance(paper, query_terms),
+        "semantic_relevance": signal_semantic_relevance(
+            paper,
+            query_terms,
+            query_embedding=query_embedding,
+            paper_embedding=paper_embedding,
+            embedder=embedder,
+        ),
         "citation_count": signal_citation_count(paper, papers),
         "recency": signal_recency(paper),
         "venue_quality": signal_venue_quality(paper),
         "abstract_completeness": signal_abstract_completeness(paper),
         "keyword_overlap": signal_keyword_overlap(paper, query_terms),
         "author_prominence": signal_author_prominence(paper),
-        "embedding_similarity": signal_embedding_similarity(
-            paper,
-            query_embedding,
-            paper_embedding,
-            embedder,
-        ),
+        "embedding_similarity": embedding_sim,
     }
 
     available = {name: value for name, value in signals.items() if value is not None}
     active = _active_weights(weights, available)
     rank_score = sum(active[name] * available[name] for name in available)
+
+    penalties: list[str] = []
+    if applies_domain_penalty(query, paper):
+        rank_score *= domain_penalty
+        penalties.append("concept_coverage")
+    if embedding_outlier(embedding_sim, top_k_mean_embedding_sim, outlier_embedding_gap):
+        rank_score *= domain_penalty
+        penalties.append("embedding_outlier")
+    if keyword_collision(paper, query_terms, embedding_sim, keyword_collision_max_sim):
+        rank_score *= domain_penalty
+        penalties.append("keyword_collision")
+
+    boost = canonical_score_boost(paper, canonical_works or [], canonical_boost)
+    if boost > 0.0:
+        rank_score = min(rank_score + boost, 1.0)
+
     breakdown = {name: round(value, 4) for name, value in available.items()}
+    if penalties:
+        for penalty_name in penalties:
+            breakdown[f"penalty_{penalty_name}"] = 1.0
+        breakdown["domain_penalty_multiplier"] = round(domain_penalty, 4)
+    if boost > 0.0:
+        breakdown["canonical_boost"] = round(boost, 4)
 
     return RankedPaper(
         paper=paper,
@@ -216,12 +369,21 @@ def score_paper(
     )
 
 
+@dataclass(frozen=True)
+class RankPapersResult:
+    """Ranking output plus optional embedding artifacts for downstream stages."""
+
+    ranked: list[RankedPaper]
+    query_embedding: np.ndarray | None = None
+    paper_embeddings: dict[str, np.ndarray] | None = None
+
+
 def rank_papers(
     papers: list[RetrievedPaper],
     query: str,
     config: RankingConfig | None = None,
     embedder: EmbeddingProvider | None = None,
-) -> list[RankedPaper]:
+) -> RankPapersResult:
     """Rank papers using configurable weighted signals."""
     if config is None:
         from ..config.settings import get_settings
@@ -229,15 +391,31 @@ def rank_papers(
         config = get_settings().ranking
 
     if not papers:
-        return []
+        return RankPapersResult(ranked=[])
+
+    canonical_works = load_canonical_works()
+    papers = sanitize_papers_metadata(papers)
 
     query_embedding: np.ndarray | None = None
-    paper_embeddings: list[np.ndarray | None] = [None] * len(papers)
-    if embedder is not None and config.weights.embedding_similarity > 0:
+    paper_vectors: list[np.ndarray | None] = [None] * len(papers)
+    if embedder is not None:
         texts = [_paper_text(paper) for paper in papers]
         vectors = embedder.embed_texts([query, *texts])
         query_embedding = vectors[0]
-        paper_embeddings = list(vectors[1:])
+        paper_vectors = list(vectors[1:])
+
+    embedding_sims: list[float | None] = [
+        signal_embedding_similarity(
+            paper,
+            query_embedding,
+            paper_vectors[index],
+            embedder,
+        )
+        if embedder is not None
+        else None
+        for index, paper in enumerate(papers)
+    ]
+    top_k_mean_embedding_sim = _top_k_mean_embedding_similarity(embedding_sims)
 
     ranked = [
         score_paper(
@@ -246,13 +424,38 @@ def rank_papers(
             papers=papers,
             weights=config.weights,
             query_embedding=query_embedding,
-            paper_embedding=paper_embeddings[index],
+            paper_embedding=paper_vectors[index],
             embedder=embedder,
+            domain_penalty=config.domain_penalty_multiplier,
+            outlier_embedding_gap=config.outlier_embedding_gap,
+            keyword_collision_max_sim=config.keyword_collision_max_sim,
+            top_k_mean_embedding_sim=top_k_mean_embedding_sim,
+            canonical_boost=config.canonical_boost,
+            canonical_works=canonical_works,
         )
         for index, paper in enumerate(papers)
     ]
     ranked.sort(key=lambda item: item.rank_score, reverse=True)
-    return ranked[: config.top_k]
+    top_ranked = ranked[: config.top_k]
+
+    paper_embeddings: dict[str, np.ndarray] | None = None
+    if query_embedding is not None:
+        id_to_vector = {
+            paper.paper_id: paper_vectors[index]
+            for index, paper in enumerate(papers)
+            if paper_vectors[index] is not None
+        }
+        paper_embeddings = {
+            item.paper.paper_id: id_to_vector[item.paper.paper_id]
+            for item in top_ranked
+            if item.paper.paper_id in id_to_vector
+        } or None
+
+    return RankPapersResult(
+        ranked=top_ranked,
+        query_embedding=query_embedding,
+        paper_embeddings=paper_embeddings or None,
+    )
 
 
 class RankingStage:
@@ -272,18 +475,18 @@ class RankingStage:
         warnings: list[str] = []
 
         embedder = self.embedder
-        if embedder is None and ctx.config.ranking.weights.embedding_similarity > 0:
+        if embedder is None:
             from ..embeddings import try_create_embedding_provider
 
             embedder = try_create_embedding_provider(ctx.config.embedding)
-            if embedder is None:
+            if embedder is None and ctx.config.ranking.weights.embedding_similarity > 0:
                 warnings.append(
                     "Embedding similarity ranking skipped: sentence-transformers is not installed. "
                     "Run: pipenv install"
                 )
 
         try:
-            ranked = rank_papers(
+            ranking_result = rank_papers(
                 papers=data,
                 query=ctx.query,
                 config=ctx.config.ranking,
@@ -291,12 +494,19 @@ class RankingStage:
             )
         except ImportError as exc:
             warnings.append(f"Ranking failed ({exc}); using keyword-only fallback")
-            ranked = rank_papers(
+            ranking_result = rank_papers(
                 papers=data,
                 query=ctx.query,
                 config=ctx.config.ranking,
                 embedder=None,
             )
+
+        ranked = ranking_result.ranked
+        store_ranking_embedding_result(
+            ctx,
+            ranking_result.query_embedding,
+            ranking_result.paper_embeddings,
+        )
 
         duration_ms = (time.perf_counter() - started) * 1000
         top_score = ranked[0].rank_score if ranked else 0.0

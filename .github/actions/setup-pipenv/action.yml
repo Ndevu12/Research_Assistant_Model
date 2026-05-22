@@ -1,0 +1,33 @@
+name: Setup Pipenv
+description: Install project dependencies from Pipfile.lock using Pipenv
+
+inputs:
+  python-version:
+    description: Python version to install
+    required: false
+    default: "3.13"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+
+    - name: Cache Pipenv virtualenv
+      uses: actions/cache@v4
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('Pipfile.lock') }}
+        restore-keys: |
+          venv-${{ runner.os }}-py${{ inputs.python-version }}-
+
+    - name: Install Pipenv and project dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install pipenv
+        pipenv --version
+        pipenv install --deploy

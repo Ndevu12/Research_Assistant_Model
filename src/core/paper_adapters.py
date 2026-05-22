@@ -37,7 +37,7 @@ def ensure_ranked_papers(
             query=query,
             config=config,
             embedder=None,
-        )
+        ).ranked
         return ranked, warnings
 
     warnings.append("Unexpected pipeline data type; returning empty ranked list")

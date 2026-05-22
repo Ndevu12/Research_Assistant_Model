@@ -20,10 +20,19 @@ DOMAIN_SYNONYMS: dict[str, list[str]] = {
     "natural language processing": ["nlp", "text mining", "language models"],
     "computer vision": ["image processing", "visual recognition", "image analysis"],
     "data science": ["analytics", "big data", "data mining"],
-    "transformer": ["attention mechanism", "self-attention", "transformer architecture"],
+    "self-attention": ["scaled dot-product attention", "multi-head attention"],
+    "attention mechanism": ["self-attention", "scaled dot-product attention"],
+    "attention mechanisms": ["self-attention mechanisms", "multi-head attention"],
+    "transformer": ["self-attention", "transformer architecture", "attention mechanism"],
     "llm": ["large language model", "language model", "generative ai"],
     "reinforcement learning": ["rl", "policy learning", "reward optimization"],
 }
+
+_BROAD_SINGLE_CONCEPT_TERMS = frozenset(
+    {"attention", "transformer", "learning", "model", "models", "network", "networks"}
+)
+
+_VARIANT_MIN_JACCARD = 0.3
 
 ACRONYM_EXPANSIONS: dict[str, str] = {
     "nlp": "natural language processing",
@@ -71,13 +80,119 @@ def extract_core_concepts(query: str) -> list[str]:
     return [word for word in words if word not in _STOP_WORDS and len(word) > 3][:5]
 
 
+def _token_set(text: str) -> set[str]:
+    return set(re.findall(r"\b\w+\b", text.lower()))
+
+
+def _bigrams(text: str) -> set[tuple[str, str]]:
+    words = re.findall(r"\b\w+\b", text.lower())
+    return {(words[index], words[index + 1]) for index in range(len(words) - 1)}
+
+
+def _jaccard_similarity(left: set[str], right: set[str]) -> float:
+    union = left | right
+    if not union:
+        return 1.0
+    return len(left & right) / len(union)
+
+
+def _phrase_in_text(phrase: str, text: str) -> bool:
+    pattern = rf"\b{re.escape(phrase)}\b"
+    return bool(re.search(pattern, text, flags=re.IGNORECASE))
+
+
+def _normalize_concept_token(token: str) -> str:
+    if token.endswith("s") and len(token) > 4:
+        return token[:-1]
+    return token
+
+
+def _normalized_token_set(text: str) -> set[str]:
+    return {_normalize_concept_token(token) for token in _token_set(text)}
+
+
+def _synonym_already_in_query(synonym: str, query: str) -> bool:
+    if _phrase_in_text(synonym, query):
+        return True
+    synonym_tokens = _normalized_token_set(synonym)
+    query_tokens = _normalized_token_set(query)
+    return bool(synonym_tokens) and synonym_tokens <= query_tokens
+
+
+def _replacement_is_redundant(query: str, term: str, synonym: str) -> bool:
+    if _synonym_already_in_query(synonym, query):
+        return True
+    remainder = re.sub(r"\s+", " ", _replace_phrase(query, term, " ")).strip()
+    if not remainder:
+        return False
+    synonym_tokens = _normalized_token_set(synonym)
+    remainder_tokens = _normalized_token_set(remainder)
+    if not synonym_tokens:
+        return False
+    overlap = synonym_tokens & remainder_tokens
+    return len(overlap) >= max(1, len(synonym_tokens) - 1)
+
+
+def _replace_phrase(text: str, old: str, new: str) -> str:
+    pattern = rf"\b{re.escape(old)}\b"
+    return re.sub(pattern, new, text, flags=re.IGNORECASE)
+
+
+def _passes_variant_quality_gate(original: str, variant: str) -> bool:
+    original_tokens = _token_set(original)
+    variant_tokens = _token_set(variant)
+    if _jaccard_similarity(original_tokens, variant_tokens) >= _VARIANT_MIN_JACCARD:
+        return True
+    return bool(_bigrams(variant) - _bigrams(original))
+
+
+def _matched_concept_count(variant: str, key_concepts: list[str]) -> int:
+    variant_lower = variant.lower()
+    return sum(1 for concept in key_concepts if concept.lower() in variant_lower)
+
+
+def _passes_broad_term_guard(
+    variant: str,
+    key_concepts: list[str],
+) -> bool:
+    if len(key_concepts) < 2:
+        return True
+
+    variant_tokens = _token_set(variant) - _STOP_WORDS
+    if len(variant_tokens) == 1 and variant_tokens & _BROAD_SINGLE_CONCEPT_TERMS:
+        return False
+
+    return _matched_concept_count(variant, key_concepts) >= 2
+
+
+def _filter_variants(
+    original: str,
+    variants: list[str],
+    key_concepts: list[str],
+) -> list[str]:
+    filtered: list[str] = []
+    original_lower = original.lower()
+    for variant in variants:
+        normalized = variant.strip()
+        if not normalized:
+            continue
+        if normalized.lower() == original_lower:
+            continue
+        if not _passes_variant_quality_gate(original, normalized):
+            continue
+        if not _passes_broad_term_guard(normalized, key_concepts):
+            continue
+        filtered.append(normalized)
+    return filtered
+
+
 def _expand_acronyms(query: str) -> list[str]:
     variants: list[str] = []
     query_lower = query.lower()
     for acronym, expansion in ACRONYM_EXPANSIONS.items():
         pattern = rf"\b{re.escape(acronym)}\b"
         if re.search(pattern, query_lower):
-            expanded = re.sub(pattern, expansion, query_lower, flags=re.IGNORECASE)
+            expanded = re.sub(pattern, expansion, query, flags=re.IGNORECASE)
             if expanded.lower() != query_lower:
                 variants.append(expanded)
     return variants
@@ -86,22 +201,30 @@ def _expand_acronyms(query: str) -> list[str]:
 def _expand_synonyms(query: str) -> list[str]:
     variants: list[str] = []
     query_lower = query.lower()
-    for term, synonyms in DOMAIN_SYNONYMS.items():
-        if term in query_lower:
-            for synonym in synonyms:
-                variant = query_lower.replace(term, synonym)
-                if variant != query_lower:
-                    variants.append(variant)
+    sorted_terms = sorted(DOMAIN_SYNONYMS, key=len, reverse=True)
+
+    for term in sorted_terms:
+        if not _phrase_in_text(term, query_lower):
+            continue
+        for synonym in DOMAIN_SYNONYMS[term]:
+            if _replacement_is_redundant(query_lower, term, synonym):
+                continue
+            variant = _replace_phrase(query, term, synonym)
+            if variant.lower() != query_lower:
+                variants.append(variant)
     return variants
 
 
 def _heuristic_variants(query: str, key_concepts: list[str]) -> list[str]:
-    variants: list[str] = []
-    variants.extend(_expand_acronyms(query))
-    variants.extend(_expand_synonyms(query))
+    core_variants: list[str] = []
+    core_variants.extend(_expand_acronyms(query))
+    core_variants.extend(_expand_synonyms(query))
+    variants = _filter_variants(query, core_variants, key_concepts)
 
     if key_concepts:
-        variants.append(" ".join(key_concepts[:3]))
+        concept_join = " ".join(key_concepts[:3])
+        if concept_join.lower() != query.lower():
+            variants.append(concept_join)
         if len(key_concepts) >= 2:
             variants.append(f"{key_concepts[0]} {key_concepts[1]} methods")
             variants.append(f"{key_concepts[0]} {key_concepts[1]} applications")
@@ -110,7 +233,7 @@ def _heuristic_variants(query: str, key_concepts: list[str]) -> list[str]:
     for modifier in modifiers:
         variants.append(f"{modifier} {query}")
 
-    return variants
+    return _filter_variants(query, variants, key_concepts)
 
 
 def _heuristic_sub_questions(query: str, key_concepts: list[str]) -> list[str]:
@@ -153,9 +276,7 @@ def expand_query_heuristic(
     variants = _heuristic_variants(query, concepts)
     sub_questions = _heuristic_sub_questions(query, concepts)
 
-    variants = _dedupe_preserve_order(
-        [variant for variant in variants if variant.lower() != query.lower()]
-    )
+    variants = _dedupe_preserve_order(variants)
 
     return ExpandedQuerySet(
         original=query,

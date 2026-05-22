@@ -1,0 +1,30 @@
+name: Integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Monday at 06:00 UTC
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  PIPENV_VENV_IN_PROJECT: "1"
+  PIPENV_DONT_LOAD_ENV: "1"
+
+jobs:
+  slow-tests:
+    name: Slow / system tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pipenv
+        uses: ./.github/actions/setup-pipenv
+
+      - name: Run slow tests
+        run: pipenv run pytest -m slow --tb=short -q

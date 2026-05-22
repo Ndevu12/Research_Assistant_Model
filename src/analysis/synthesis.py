@@ -13,6 +13,7 @@ from pydantic_ai import Agent
 from ..core.context import PipelineContext, StageResult
 from ..core.paper_adapters import ensure_ranked_papers
 from ..models import AgentFactory, AgentRole, ROLE_SYSTEM_PROMPTS
+from ..research.query_expansion import extract_core_concepts
 from ..retrieval.models import (
     PaperAnalysis,
     PaperCluster,
@@ -35,6 +36,88 @@ def create_llm_agent(system_prompt: str, llm_config: LLMConfig | None = None) ->
 
 EXTRACTION_SYSTEM_PROMPT = ROLE_SYSTEM_PROMPTS[AgentRole.EXTRACTION]
 SYNTHESIS_SYSTEM_PROMPT = ROLE_SYSTEM_PROMPTS[AgentRole.SYNTHESIS]
+
+HEURISTIC_DISAGREEMENT_PLACEHOLDER = (
+    "Cross-paper disagreement analysis limited in heuristic mode."
+)
+
+_CONFLICT_TERM_GROUPS = (
+    ("outperform", "underperform"),
+    ("better", "worse"),
+    ("superior", "inferior"),
+    ("increase", "decrease"),
+    ("effective", "ineffective"),
+)
+
+
+def embedding_similarity_for_paper(paper: RankedPaper) -> float:
+    """Return cached embedding similarity from ranking, if present."""
+    return float(paper.score_breakdown.get("embedding_similarity", 0.0))
+
+
+def sentence_aligns_with_query(sentence: str, concepts: list[str]) -> bool:
+    """Return True when a sentence overlaps with at least one query concept."""
+    if not concepts:
+        return True
+    lower = sentence.lower()
+    return any(concept.lower() in lower for concept in concepts)
+
+
+def _top_quartile_paper_ids(ranked_papers: list[RankedPaper]) -> set[str]:
+    if not ranked_papers:
+        return set()
+    sorted_papers = sorted(
+        ranked_papers,
+        key=embedding_similarity_for_paper,
+        reverse=True,
+    )
+    quartile_count = max(1, (len(sorted_papers) + 3) // 4)
+    return {paper.paper.paper_id for paper in sorted_papers[:quartile_count]}
+
+
+def _select_query_aligned_agreements(
+    query: str,
+    extractions: list[PaperExtraction],
+    ranked_papers: list[RankedPaper] | None,
+) -> list[str]:
+    concepts = extract_core_concepts(query)
+    top_ids = _top_quartile_paper_ids(ranked_papers or [])
+
+    aligned_findings: list[str] = []
+    for extraction in extractions:
+        if top_ids and extraction.paper_id not in top_ids:
+            continue
+        for finding in extraction.findings:
+            if sentence_aligns_with_query(finding, concepts):
+                aligned_findings.append(finding)
+
+    return list(dict.fromkeys(aligned_findings))[:3]
+
+
+def _detect_conflicting_findings(extractions: list[PaperExtraction]) -> list[str]:
+    conflicts: list[str] = []
+    all_findings = [finding.lower() for extraction in extractions for finding in extraction.findings]
+
+    for positive, negative in _CONFLICT_TERM_GROUPS:
+        has_positive = any(positive in finding for finding in all_findings)
+        has_negative = any(negative in finding for finding in all_findings)
+        if has_positive and has_negative:
+            conflicts.append(
+                f"Papers report mixed evidence on whether approaches "
+                f"{positive} or {negative} baselines."
+            )
+
+    methodologies = {
+        item.lower()
+        for extraction in extractions
+        for item in extraction.methodology
+        if item
+    }
+    if len(methodologies) >= 3:
+        sample = sorted(methodologies)[:3]
+        conflicts.append(f"Diverse methodological approaches: {', '.join(sample)}.")
+
+    return list(dict.fromkeys(conflicts))[:3]
 
 
 def _heuristic_extraction(paper: RankedPaper) -> PaperExtraction:
@@ -64,17 +147,16 @@ def _heuristic_synthesis(
     query: str,
     extractions: list[PaperExtraction],
     clusters: list[PaperCluster],
+    ranked_papers: list[RankedPaper] | None = None,
 ) -> SynthesisResult:
     """Aggregate extractions heuristically when collective synthesis fails."""
     all_datasets: list[str] = []
     all_methodologies: list[str] = []
-    all_findings: list[str] = []
     all_limitations: list[str] = []
 
     for extraction in extractions:
         all_datasets.extend(extraction.datasets)
         all_methodologies.extend(extraction.methodology)
-        all_findings.extend(extraction.findings)
         all_limitations.extend(extraction.limitations)
 
     unique_datasets = list(dict.fromkeys(item for item in all_datasets if item))
@@ -89,13 +171,17 @@ def _heuristic_synthesis(
     if not gaps:
         gaps = [f"Limited cross-paper comparison for query: {query}"]
 
-    agreements = all_findings[:3]
+    agreements = _select_query_aligned_agreements(query, extractions, ranked_papers)
     if len(agreements) < 2 and unique_methodologies:
         agreements = [f"Shared methodological themes: {', '.join(unique_methodologies[:3])}"]
 
+    disagreements = _detect_conflicting_findings(extractions)
+    if not disagreements:
+        disagreements = [HEURISTIC_DISAGREEMENT_PLACEHOLDER]
+
     return SynthesisResult(
         agreements=agreements,
-        disagreements=["Full disagreement analysis requires LLM synthesis"],
+        disagreements=disagreements,
         trends=trends,
         gaps=gaps,
         datasets=unique_datasets[:10],
@@ -210,7 +296,12 @@ def recover_synthesis_output(
 
     resolved_clusters = clusters or ctx.get_artifact("paper_clusters") or []
     extractions = [_heuristic_extraction(paper) for paper in ranked_papers]
-    synthesis = _heuristic_synthesis(ctx.query, extractions, resolved_clusters)
+    synthesis = _heuristic_synthesis(
+        ctx.query,
+        extractions,
+        resolved_clusters,
+        ranked_papers=ranked_papers,
+    )
     paper_analyses = _extractions_to_paper_analyses(extractions, ranked_papers)
 
     ctx.set_artifact("paper_extractions", extractions)
@@ -359,7 +450,7 @@ async def synthesize_collective(
 
     if not synthesis_config.llm_enabled:
         logger.info("Using heuristic collective synthesis (synthesis.llm_enabled=false)")
-        return _heuristic_synthesis(query, extractions, clusters)
+        return _heuristic_synthesis(query, extractions, clusters, ranked_papers=ranked_papers)
 
     if llm_config is None:
         from ..config.settings import get_settings
@@ -399,7 +490,7 @@ async def synthesize_collective(
     if result.success and isinstance(result.data, SynthesisResult):
         return result.data
     logger.warning("LLM collective synthesis failed; using heuristic fallback")
-    return _heuristic_synthesis(query, extractions, clusters)
+    return _heuristic_synthesis(query, extractions, clusters, ranked_papers=ranked_papers)
 
 
 async def run_synthesis(
@@ -517,7 +608,12 @@ class SynthesisStage:
             warnings.append(f"Synthesis failed, using heuristic fallback: {exc}")
             partial = True
             extractions = [_heuristic_extraction(paper) for paper in ranked_papers]
-            synthesis = _heuristic_synthesis(ctx.query, extractions, data)
+            synthesis = _heuristic_synthesis(
+                ctx.query,
+                extractions,
+                data,
+                ranked_papers=ranked_papers,
+            )
             paper_analyses = _extractions_to_paper_analyses(extractions, ranked_papers)
 
         ctx.set_artifact("paper_extractions", extractions)

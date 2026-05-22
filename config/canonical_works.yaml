@@ -1,0 +1,10 @@
+# Known canonical papers for ranking boost and metadata sanity (Phase 2.2).
+works:
+  - title: "Attention Is All You Need"
+    authors: ["Vaswani"]
+    year: 2017
+    doi_prefix: "10.48550"
+  - title: "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+    authors: ["Devlin"]
+    year: 2018
+    doi_prefix: "10.18653"

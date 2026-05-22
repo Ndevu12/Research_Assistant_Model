@@ -7,16 +7,22 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.config.settings import AppSettings
+from src.config.settings import AppSettings, RelevanceScoringConfig
 from src.core.pipeline import ResearchPipelineResult
 from src.reporting.citations import generate_bibtex, make_citation_key
 from src.reporting.markdown import render_enhanced_markdown, render_markdown
-from src.reporting.report_generation import ReportGenerationStage, assemble_report
+from src.reporting.report_generation import (
+    ReportGenerationStage,
+    _build_executive_summary,
+    _summary_embedding_floor,
+    assemble_report,
+)
 from src.retrieval.models import (
     EnhancedResearchReport,
     GapAnalysisResult,
     PaperAnalysis,
     PaperCluster,
+    RankedPaper,
     RetrievedPaper,
     ResearchReport,
     SynthesisResult,
@@ -147,6 +153,118 @@ class TestCitationExport:
         bibtex = generate_bibtex([paper])
         assert "@article{" in bibtex
         assert "Sample Paper" in bibtex
+
+
+class TestExecutiveSummary:
+    def test_executive_summary_uses_template_not_raw_agreement(self) -> None:
+        clusters = [
+            PaperCluster(theme="Transformer Architectures", paper_ids=["a"]),
+            PaperCluster(theme="Attention Mechanisms", paper_ids=["b"]),
+        ]
+        synthesis = SynthesisResult(
+            agreements=["Air pollutant transformer protein shows high affinity."],
+        )
+        ranked = [
+            RankedPaper(
+                paper=RetrievedPaper(title="Off-topic", provider="openalex"),
+                rank_score=0.2,
+                score_breakdown={"embedding_similarity": 0.1},
+            )
+        ]
+
+        summary = _build_executive_summary(
+            "transformer attention mechanisms",
+            synthesis,
+            clusters,
+            paper_count=2,
+            ranked_papers=ranked,
+            relevance_config=RelevanceScoringConfig(min_embedding_similarity=0.35),
+        )
+
+        assert "transformer attention mechanisms" in summary
+        assert "review of 2 paper(s)" in summary
+        assert "Transformer Architectures" in summary
+        assert "air pollutant" not in summary.lower()
+
+    def test_executive_summary_appends_validated_finding_when_embedding_strong(self) -> None:
+        clusters = [PaperCluster(theme="Transformers", paper_ids=["a"])]
+        synthesis = SynthesisResult(
+            agreements=["Self-attention improves parallel transformer training."],
+        )
+        ranked = [
+            RankedPaper(
+                paper=RetrievedPaper(title="Attention", provider="openalex"),
+                rank_score=0.9,
+                score_breakdown={"embedding_similarity": 0.8},
+            )
+        ]
+
+        summary = _build_executive_summary(
+            "transformer attention mechanisms",
+            synthesis,
+            clusters,
+            paper_count=1,
+            ranked_papers=ranked,
+            relevance_config=RelevanceScoringConfig(min_embedding_similarity=0.35),
+        )
+
+        assert "Notable finding:" in summary
+        assert "self-attention" in summary.lower()
+
+    def test_executive_summary_omits_snippet_when_top_below_config_floor(self) -> None:
+        """Snippet omitted when top embedding similarity is below configured floor."""
+        clusters = [PaperCluster(theme="Transformers", paper_ids=["a"])]
+        synthesis = SynthesisResult(
+            agreements=["Self-attention improves parallel transformer training."],
+        )
+        ranked = [
+            RankedPaper(
+                paper=RetrievedPaper(title="Weak match", provider="openalex"),
+                rank_score=0.4,
+                score_breakdown={"embedding_similarity": 0.30},
+            ),
+        ]
+        config = RelevanceScoringConfig(
+            min_embedding_similarity=0.35,
+            adaptive_embedding=True,
+            gap_from_top=0.12,
+        )
+
+        summary = _build_executive_summary(
+            "transformer attention mechanisms",
+            synthesis,
+            clusters,
+            paper_count=1,
+            ranked_papers=ranked,
+            relevance_config=config,
+        )
+
+        assert "Notable finding:" not in summary
+        assert "transformer attention mechanisms" in summary
+
+    def test_summary_embedding_floor_matches_relevance_scoring(self) -> None:
+        ranked = [
+            RankedPaper(
+                paper=RetrievedPaper(title="A", provider="openalex"),
+                rank_score=0.9,
+                score_breakdown={"embedding_similarity": 0.92},
+            ),
+            RankedPaper(
+                paper=RetrievedPaper(title="B", provider="openalex"),
+                rank_score=0.5,
+                score_breakdown={"embedding_similarity": 0.55},
+            ),
+        ]
+        config = RelevanceScoringConfig(
+            min_embedding_similarity=0.35,
+            adaptive_embedding=True,
+            gap_from_top=0.12,
+            keep_percentile=25.0,
+        )
+
+        floor = _summary_embedding_floor(ranked, config)
+
+        assert floor == pytest.approx(0.80, abs=0.01)
 
 
 class TestReportGenerationStage:

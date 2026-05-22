@@ -13,17 +13,21 @@ embedding:
 ranking:
   top_k: 25
   weights:
-    semantic_relevance: 0.30
-    citation_count: 0.15
-    recency: 0.15
+    semantic_relevance: 0.20
+    citation_count: 0.08
+    recency: 0.08
     venue_quality: 0.10
     abstract_completeness: 0.10
     keyword_overlap: 0.10
     author_prominence: 0.05
-    embedding_similarity: 0.05
+    embedding_similarity: 0.30
+  domain_penalty_multiplier: 0.5
+  outlier_embedding_gap: 0.12
+  keyword_collision_max_sim: 0.40
+  canonical_boost: 0.0
 
 query_expansion:
-  llm_enabled: false
+  llm_mode: auto
   max_variants: 5
   max_sub_questions: 3
 
@@ -35,6 +39,18 @@ deduplication:
 clustering:
   min_cluster_size: 2
   min_samples: 1
+  noise_merge_threshold: 0.5
+  max_macro_clusters: 4
+
+relevance_scoring:
+  min_rank_score: 0.25
+  min_embedding_similarity: 0.35
+  require_all_concepts: true
+  min_papers: 5
+  concept_match_mode: any_group
+  adaptive_embedding: true
+  keep_percentile: 25
+  gap_from_top: 0.12
 
 retrieval:
   concurrency_limit: 4
@@ -86,7 +102,7 @@ memory:
   cache_enabled: false
 
 synthesis:
-  llm_enabled: false
+  llm_mode: auto
   max_llm_papers: 3
   extraction_max_retries: 0
   collective_max_retries: 0

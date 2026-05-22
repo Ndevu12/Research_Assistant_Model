@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -75,22 +75,30 @@ class EmbeddingConfig(BaseModel):
 
 
 class RankingWeights(BaseModel):
-    semantic_relevance: float = 0.30
-    citation_count: float = 0.15
-    recency: float = 0.15
+    semantic_relevance: float = 0.20
+    citation_count: float = 0.08
+    recency: float = 0.08
     venue_quality: float = 0.10
     abstract_completeness: float = 0.10
     keyword_overlap: float = 0.10
     author_prominence: float = 0.05
-    embedding_similarity: float = 0.05
+    embedding_similarity: float = 0.30
 
 
 class RankingConfig(BaseModel):
     top_k: int = 25
     weights: RankingWeights = Field(default_factory=RankingWeights)
+    domain_penalty_multiplier: float = 0.5
+    outlier_embedding_gap: float = 0.12
+    keyword_collision_max_sim: float = 0.40
+    canonical_boost: float = 0.0
+
+
+LlmMode = Literal["auto", "on", "off"]
 
 
 class QueryExpansionConfig(BaseModel):
+    llm_mode: LlmMode = "auto"
     llm_enabled: bool = False
     max_variants: int = 5
     max_sub_questions: int = 3
@@ -105,6 +113,19 @@ class DeduplicationConfig(BaseModel):
 class ClusteringConfig(BaseModel):
     min_cluster_size: int = 2
     min_samples: int = 1
+    noise_merge_threshold: float = 0.5
+    max_macro_clusters: int = 4
+
+
+class RelevanceScoringConfig(BaseModel):
+    min_rank_score: float = 0.25
+    min_embedding_similarity: float = 0.35
+    require_all_concepts: bool = True
+    min_papers: int = 5
+    concept_match_mode: str = "any_group"
+    adaptive_embedding: bool = True
+    keep_percentile: float = 25.0
+    gap_from_top: float = 0.12
 
 
 class ProviderConfig(BaseModel):
@@ -157,6 +178,7 @@ class MemoryConfig(BaseModel):
 
 
 class SynthesisConfig(BaseModel):
+    llm_mode: LlmMode = "auto"
     llm_enabled: bool = False
     max_llm_papers: int = 3
     extraction_max_retries: int = 0
@@ -215,6 +237,7 @@ class AppSettings(BaseSettings):
     query_expansion: QueryExpansionConfig = Field(default_factory=QueryExpansionConfig)
     deduplication: DeduplicationConfig = Field(default_factory=DeduplicationConfig)
     clustering: ClusteringConfig = Field(default_factory=ClusteringConfig)
+    relevance_scoring: RelevanceScoringConfig = Field(default_factory=RelevanceScoringConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)

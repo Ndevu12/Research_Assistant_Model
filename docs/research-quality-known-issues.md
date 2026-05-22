@@ -1,6 +1,6 @@
 # Research Quality — Known Issues
 
-**Status:** Documented — fixes **not yet implemented** (awaiting go-ahead)  
+**Status:** P0–P2 fixes **implemented** (2026-05-22)  
 **Recorded:** 2026-05-22  
 **Triggering run:** Interactive query `transformer attention mechanisms`  
 **Branch context:** `feat/multi-stage-research-pipeline`
@@ -9,13 +9,13 @@
 
 ## Summary
 
-Reports can look **factually wrong or off-topic** even when the pipeline completes successfully. For the reference run, this was **not** primarily an Ollama/LLM accuracy failure: **no LLM calls were made** (`llm_tokens_in: 0`, `synthesis.llm_enabled=false`). The pipeline retrieved a mix of relevant and irrelevant papers, ranked some off-topic work highly, and assembled a misleading executive summary using **heuristic synthesis** and **abstract snippet extraction**.
+Reports could look **factually wrong or off-topic** even when the pipeline completed successfully. For the reference run, this was **not** primarily an Ollama/LLM accuracy failure: **no LLM calls were made** (`llm_tokens_in: 0`, `synthesis.llm_enabled=false`). The pipeline retrieved a mix of relevant and irrelevant papers, ranked some off-topic work highly, and assembled a misleading executive summary using **heuristic synthesis** and **abstract snippet extraction**.
 
-Treat this document as the backlog for research-quality improvements.
+The fixes below are **query-agnostic** — they use embedding similarity, adaptive corpus-relative thresholds, and generic keyword-collision detection rather than hardcoded NLP/ML domain lists. Multi-domain regression tests live in `tests/test_research_quality.py`.
 
 ---
 
-## Reference Run — Observed Symptoms
+## Reference Run — Observed Symptoms (Pre-Fix)
 
 | Symptom | Example from output |
 |---------|---------------------|
@@ -33,7 +33,21 @@ Treat this document as the backlog for research-quality improvements.
 
 ---
 
-## Architecture Context (What Ran)
+## Fix Status
+
+| ID | Component | Status | What changed |
+|----|-----------|--------|--------------|
+| RC-1 | Query expansion | **Fixed** | Phrase-aware synonyms, Jaccard gate, broad-term guard; ML-specific templates removed |
+| RC-2 | Ranking | **Fixed** | Embedding weight 30%; embedding outlier + keyword-collision penalties (no ML branch) |
+| RC-3 | Relevance gate | **Fixed** | Adaptive embedding floor (percentile + gap-from-top); configurable `min_embedding_similarity` |
+| RC-4 | Synthesis & summary | **Fixed** | Top-quartile agreements; template executive summary wired to config thresholds |
+| RC-5 | Clustering | **Fixed** | Macro-cluster merge when HDBSCAN noise > 50%; `Theme:` labels instead of singleton spam |
+| RC-6 | Metadata / dedup | **Fixed** | Generic year/DOI sanity; `canonical_boost: 0.0` default (registry opt-in) |
+| RC-7 | LLM mode | **Fixed** | `llm_mode: auto \| on \| off` via `resolve_llm_features.py` |
+
+---
+
+## Architecture Context
 
 ```
 Query → expansion (heuristic) → retrieval (OpenAlex + Semantic Scholar)
@@ -41,218 +55,127 @@ Query → expansion (heuristic) → retrieval (OpenAlex + Semantic Scholar)
      → gap_analysis (heuristic) → report_generation
 ```
 
-| Stage | LLM used? | Notes |
-|-------|-----------|-------|
-| Query expansion | No (`query_expansion.llm_enabled=false`) | Heuristic variants only |
+| Stage | LLM used? | Quality notes |
+|-------|-----------|---------------|
+| Query expansion | Auto (off on 3B Ollama) | Heuristic variants with quality gates |
 | Retrieval | No | Keyword/API search |
-| Ranking | No | Weighted signals + embeddings |
-| Synthesis | No (`synthesis.llm_enabled=false`) | Abstract snippet heuristics |
-| Gap analysis | No | Derived from heuristic synthesis |
-| Report | No | Executive summary from synthesis.agreements[0] |
-
-**Config defaults:** `config/default.yaml` — `synthesis.llm_enabled: false`
+| Ranking | No | Weighted signals + embedding cache |
+| Relevance | No | Adaptive embedding floor + concept match |
+| Synthesis | Auto | Heuristic path uses embedding-aligned agreements |
+| Report | No | Template summary + validated snippet |
 
 ---
 
-## Root Cause Analysis
+## Root Cause Analysis (Historical)
+
+These sections document **why** the reference run failed. Each maps to a fix above.
 
 ### RC-1: Query expansion produces noisy search strings
 
-**Location:** `src/research/query_expansion.py` — `expand_query_heuristic()`, `_expand_synonyms()`
+**Location:** `src/research/query_expansion.py`
 
-For query `transformer attention mechanisms`, heuristic expansion yields:
-
-```
-attention mechanism attention mechanisms
-self-attention attention mechanisms
-transformer architecture attention mechanisms
-transformer attention methods
-transformer attention applications
-```
-
-**Problems:**
-
-1. **Redundant / ungrammatical variants** (e.g. doubling “attention mechanism”).
-2. **Substring synonym replacement** — replacing `transformer` with `attention mechanism` in a query that already contains “attention” dilutes intent.
-3. **Over-broad term `attention`** — matches medical, vision, psychology, and generic “attention mechanism” papers unrelated to NLP transformers.
-4. **Missing high-value variants** — no explicit `"self-attention"`, `"transformer attention"`, survey/review phrasing, or canonical paper anchors.
-
-**Downstream effect:** `RetrievalStage` searches original + all variants (`src/retrieval/retrieval_stage.py`), multiplying off-topic API hits.
+For query `transformer attention mechanisms`, heuristic expansion previously yielded redundant variants like `attention mechanism attention mechanisms`. Fixes: phrase-aware replacement, Jaccard overlap gate, broad-term guard, concept bigrams. **No** transformer/attention-specific templates.
 
 ---
 
 ### RC-2: Ranking mis-weighted for topical precision
 
-**Location:** `src/research/ranking.py`, weights in `config/default.yaml`
+**Location:** `src/research/ranking.py`, `config/default.yaml`
 
-| Signal | Default weight | Issue |
-|--------|----------------|-------|
-| `semantic_relevance` | 30% | Implemented as **keyword overlap**, not embedding similarity |
-| `embedding_similarity` | **5%** | Too low to correct token-collision papers |
-| `recency` | 15% | Boosts recent off-topic papers (e.g. 2025 air-pollution transformer paper) |
-| `citation_count` | 15% | Popular papers rank high regardless of query fit |
-| `keyword_overlap` | 10% | Single-token hits (`attention`, `transformer`) sufficient for a decent score |
+Previously `embedding_similarity` was 5% and `semantic_relevance` was keyword-only. Now embedding weight is 30%, with generic penalties for:
 
-**Example failure mode:**  
-*A Transformer-Based Deep Learning Approach to Predicting Air Organic Pollutant–Human Protein Interactions* (2025) matches **`Transformer`** in title + recency + citations → ranks #1 despite unrelated domain.
+- Partial core-concept coverage
+- Embedding outliers (far below top-5 mean similarity)
+- Keyword collision (high overlap, low embedding similarity)
 
-**Evidence:** Debug metrics show `top_score: 0.8922` while executive summary reflects paper #1’s abstract (air pollution).
+Config: `outlier_embedding_gap: 0.12`, `keyword_collision_max_sim: 0.40`.
 
 ---
 
-### RC-3: Relevance filter is effectively disabled
+### RC-3: Relevance filter was effectively disabled
 
-**Location:** `src/research/relevance_scoring.py` — `MIN_RELEVANCE_SCORE = 0.05`
+**Location:** `src/research/relevance_scoring.py`
 
-- Filters only papers with `rank_score < 0.05`.
-- In the reference run: **25 scored, 0 filtered**.
-- No embedding-based minimum similarity to query.
-- No requirement for **multiple query concepts** to co-occur (e.g. both `transformer` and `attention` in ML sense).
+Previously filtered only at `rank_score < 0.05`. Now uses composite gate with adaptive embedding floor:
+
+```python
+floor = max(min_embedding_similarity, percentile(sims, keep_percentile), top_sim - gap_from_top)
+```
+
+Percentile skipped when corpus size < 8. Default `min_embedding_similarity: 0.35`.
 
 ---
 
-### RC-4: Heuristic synthesis builds misleading narratives
+### RC-4: Heuristic synthesis built misleading narratives
 
 **Location:** `src/analysis/synthesis.py`, `src/reporting/report_generation.py`
 
-**Extraction (`_heuristic_extraction`):**
+Previously `agreements[0]` from rank order drove the executive summary. Now:
 
-- First 1–2 abstract sentences → `findings`
-- Fixed placeholder: `methodology=["Details inferred from abstract only"]`
-- Generic fallback: `findings = [f"Discusses {title}."]`
-
-**Collective synthesis (`_heuristic_synthesis`):**
-
-- `agreements = all_findings[:3]` — **first three papers in rank order**, not semantically validated agreements
-- `disagreements = ["Full disagreement analysis requires LLM synthesis"]` — hardcoded placeholder
-- `gaps` from limitations snippets — often random abstract tails
-
-**Executive summary (`_build_executive_summary`):**
-
-```python
-if synthesis and synthesis.agreements:
-    parts.append(synthesis.agreements[0])  # ← first ranked paper's abstract lead
-```
-
-**Downstream effect:** Report reads like a **wrong answer** because the summary foregrounds whichever paper ranked first, not what the corpus collectively says about the query.
+- Agreements drawn from top embedding-similarity quartile
+- Executive summary uses query + cluster themes template
+- Validated snippet only when embedding similarity ≥ configured floor
 
 ---
 
-### RC-5: Clustering fragments into “Unclustered” singletons
+### RC-5: Clustering fragmented into “Unclustered” singletons
 
-**Location:** `src/research/clustering.py` — HDBSCAN + noise handling
+**Location:** `src/research/clustering.py`
 
-- `min_cluster_size: 2`, `min_samples: 1` in `config/default.yaml`
-- HDBSCAN label `-1` (noise) → code creates **one cluster per paper** with theme `Unclustered: {title keywords}`
-- Reference run: **8 clusters**, most singletons — poor thematic structure for reporting
-
-**Downstream effect:** Thematic Findings section looks arbitrary; executive summary lists cluster names like `Unclustered: Transformers / Remember / First`.
+When HDBSCAN noise ratio > `noise_merge_threshold` (0.5), noise papers merge into ≤4 keyword macro-clusters labeled `Theme: …`.
 
 ---
 
-### RC-6: Scholarly metadata quality (duplicate / wrong records)
+### RC-6: Scholarly metadata quality
 
-**Observed:** *Attention Is All You Need* as year **2025**, OpenAlex `W2626778328`, non-standard DOI.
+**Location:** `src/research/metadata_sanity.py`, `src/retrieval/deduplication.py`
 
-**Location:** Ingestion via `src/retrieval/providers/` — no canonical-title verification or anomaly detection.
-
-**Problems:**
-
-- No boost for known canonical works (Vaswani et al. 2017).
-- No penalty for suspicious year/title/DOI combinations.
-- Deduplication (`src/retrieval/deduplication.py`) may not merge duplicate records of the same landmark paper.
+Generic rules: future-year correction, DOI format checks, richer duplicate preference. Canonical work registry is **opt-in** (`canonical_boost: 0.0` default).
 
 ---
 
-### RC-7: LLM synthesis disabled by default (intentional, but quality cost)
+### RC-7: LLM synthesis disabled by default
 
-**Location:** `config/default.yaml`, `.env.example`
+**Location:** `src/config/resolve_llm_features.py`, `config/default.yaml`
 
-- Default `synthesis.llm_enabled: false` avoids retry loops on small local models (`llama3.2:3b`).
-- Trade-off: fast runs but **no cross-paper reasoning**, no real agreements/disagreements, no query-focused summary.
-
-**Not a bug** — a **documented product default** with known quality impact. Enabling LLM (`RA_SYNTHESIS__LLM_ENABLED=true`) helps but does not fix RC-1–RC-3 alone.
+Tri-state `llm_mode: auto` enables LLM on cloud providers and capable local models (8B+). Small Ollama models (e.g. `llama3.2:3b`) stay heuristic-only unless explicitly overridden.
 
 ---
 
-## Issue → Component Map
+## Quality Modes
 
-| ID | Component | File(s) |
-|----|-----------|---------|
-| RC-1 | Query expansion | `src/research/query_expansion.py` |
-| RC-2 | Ranking weights / signals | `src/research/ranking.py`, `config/default.yaml`, `config/ranking.yaml` |
-| RC-3 | Relevance gate | `src/research/relevance_scoring.py` |
-| RC-4 | Heuristic synthesis & summary | `src/analysis/synthesis.py`, `src/reporting/report_generation.py` |
-| RC-5 | Clustering noise handling | `src/research/clustering.py`, `config/default.yaml` |
-| RC-6 | Metadata / dedup | `src/retrieval/providers/*`, `src/retrieval/deduplication.py` |
-| RC-7 | Synthesis mode default | `config/default.yaml`, `.env.example` |
+| Mode | Typical setup | Synthesis | Expansion |
+|------|---------------|-----------|-----------|
+| Heuristic-only | `llama3.2:3b`, `llm_mode: auto` | Off | Off |
+| Balanced local | `llama3.1:8b`, `llm_mode: auto` | On | On |
+| Cloud | `openai` / `anthropic`, `llm_mode: auto` | On | On |
 
----
-
-## Planned Fix Backlog (Not Implemented)
-
-Priority order for when implementation is approved:
-
-### P0 — High impact, works without LLM
-
-1. **Query expansion hygiene** (RC-1)  
-   - Phrase-aware variants; block redundant replacements.  
-   - Add ML-specific templates for transformer/attention queries.  
-   - Cap variants that share only one broad token with the original.
-
-2. **Stronger relevance gate** (RC-3)  
-   - Embedding similarity floor (e.g. drop papers below cosine threshold to query).  
-   - Multi-concept requirement for multi-term queries.  
-   - Raise or make configurable `MIN_RELEVANCE_SCORE`.
-
-3. **Executive summary safety** (RC-4)  
-   - Do not use raw `agreements[0]` from rank order.  
-   - Build summary from query + cluster themes + embedding-centroid papers, or require LLM when heuristics would misfire.
-
-4. **Rebalance ranking weights** (RC-2)  
-   - Increase `embedding_similarity` (e.g. 25–35%).  
-   - Reduce recency/citation influence for literature-review intent.  
-   - Optionally use true embedding similarity for `semantic_relevance` signal.
-
-### P1 — Structural quality
-
-5. **Clustering fallback** (RC-5)  
-   - When >50% HDBSCAN noise, merge into keyword-based macro-themes instead of N `Unclustered` singletons.
-
-6. **Domain-aware downranking** (RC-2)  
-   - Penalize papers where only `attention` matches without `transformer`/`self-attention`/NLP context.
-
-7. **Metadata sanity** (RC-6)  
-   - Canonical title registry for landmark papers; flag year/DOI anomalies.
-
-### P2 — LLM-dependent improvements
-
-8. **Enable LLM synthesis when resources allow** (RC-7)  
-   - Document in README: `RA_SYNTHESIS__LLM_ENABLED=true` + `llama3.1:8b` or cloud provider.  
-   - Keep heuristic fast path as default for constrained machines.
-
-9. **LLM query expansion** (optional)  
-   - `query_expansion.llm_enabled=true` for better search variants when local/cloud LLM available.
+Override with `RA_SYNTHESIS__LLM_MODE=on|off|auto` or legacy `RA_SYNTHESIS__LLM_ENABLED=true|false`.
 
 ---
 
 ## Reproduction Checklist
 
-To verify issues persist before/after fixes:
+Run multi-domain regression (no network):
+
+```bash
+pipenv run pytest tests/test_research_quality.py -q
+```
+
+Full pipeline smoke test:
 
 ```bash
 pipenv run python -m src "transformer attention mechanisms"
 ```
 
-**Expect (pre-fix):**
+**Expect (post-fix):**
 
-- [ ] Executive summary may start with unrelated domain (e.g. air pollution)
-- [ ] Mix of NLP and non-NLP “transformer/attention” papers in top 25
-- [ ] Many `Unclustered:` theme headings
-- [ ] `Skipped LLM gap analysis (synthesis.llm_enabled=false)` in warnings
-- [ ] Logs: `llm_tokens_in: 0` in debug dump
+- [ ] Executive summary uses query + cluster themes; no off-topic decoy domain in lead
+- [ ] Keyword-collision decoys demoted in ranking and filtered by relevance
+- [ ] High HDBSCAN noise yields ≤4 `Theme:` macro-clusters, not N singletons
+- [ ] `llm_tokens_in: 0` when running heuristic-only mode on 3B model
 
-**Inspect:**
+**Inspect expansion:**
 
 ```bash
 pipenv run python -c "
@@ -260,7 +183,6 @@ from src.research.query_expansion import expand_query_heuristic, extract_core_co
 q = 'transformer attention mechanisms'
 print(expand_query_heuristic(q, extract_core_concepts(q)))
 "
-ls logs/debug/pipeline_*transformer* 2>/dev/null || ls -t logs/debug/ | head -3
 ```
 
 ---
@@ -269,12 +191,21 @@ ls logs/debug/pipeline_*transformer* 2>/dev/null || ls -t logs/debug/ | head -3
 
 | Setting | Default | Quality impact |
 |---------|---------|----------------|
-| `synthesis.llm_enabled` | `false` | Heuristic-only synthesis (RC-4, RC-7) |
-| `query_expansion.llm_enabled` | `false` | Heuristic expansion only (RC-1) |
-| `ranking.weights.embedding_similarity` | `0.05` | Weak semantic steering (RC-2) |
-| `ranking.top_k` | `25` | Large tail of marginal papers |
-| `clustering.min_cluster_size` | `2` | Many HDBSCAN noise labels (RC-5) |
-| `relevance_scoring` threshold | `0.05` | Almost no filtering (RC-3) |
+| `synthesis.llm_mode` | `auto` | Model-aware LLM enable (RC-7) |
+| `query_expansion.llm_mode` | `auto` | Model-aware expansion (RC-1) |
+| `ranking.weights.embedding_similarity` | `0.30` | Primary semantic steering (RC-2) |
+| `ranking.outlier_embedding_gap` | `0.12` | Demote embedding outliers (RC-2) |
+| `ranking.keyword_collision_max_sim` | `0.40` | Keyword-without-semantics penalty (RC-2) |
+| `ranking.canonical_boost` | `0.0` | Opt-in landmark boost (RC-6) |
+| `relevance_scoring.min_embedding_similarity` | `0.35` | Base embedding floor (RC-3) |
+| `relevance_scoring.adaptive_embedding` | `true` | Corpus-relative floor (RC-3) |
+| `clustering.noise_merge_threshold` | `0.5` | Macro-cluster merge trigger (RC-5) |
+
+Environment overrides:
+
+- `RA_RELEVANCE_SCORING__MIN_EMBEDDING_SIMILARITY`
+- `RA_SYNTHESIS__LLM_MODE=auto`
+- `RA_RANKING__CANONICAL_BOOST=0.05` (opt-in)
 
 ---
 
@@ -283,4 +214,4 @@ ls logs/debug/pipeline_*transformer* 2>/dev/null || ls -t logs/debug/ | head -3
 | Date | Action |
 |------|--------|
 | 2026-05-22 | Initial documentation from interactive run analysis |
-| — | Fixes pending user go-ahead |
+| 2026-05-22 | P0–P2 fixes implemented; multi-domain tests in `test_research_quality.py` |
