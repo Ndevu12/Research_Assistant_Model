@@ -34,7 +34,6 @@ env/
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 *~
@@ -61,3 +60,11 @@ reports/
 # Python cache
 __pycache__/
 pytest_cache/
+
+# MkDocs build output
+site/
+.cache/
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore

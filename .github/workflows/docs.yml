@@ -1,0 +1,87 @@
+name: Deploy docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'contributing.md'
+      - 'scripts/check_docs_policy.py'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'contributing.md'
+      - 'scripts/check_docs_policy.py'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install docs tooling
+        run: pip install mkdocs mkdocs-material mkdocs-mermaid2-plugin linkchecker
+
+      - name: Docs policy (scaffold rejection)
+        run: python scripts/check_docs_policy.py
+
+      - name: Build site
+        env:
+          NO_MKDOCS_2_WARNING: 1
+        run: mkdocs build --strict
+
+      - name: Check internal links
+        run: |
+          linkchecker \
+            --no-warnings \
+            --ignore-url="^https://github.com/" \
+            --ignore-url="^https://pypi.org/" \
+            --ignore-url="^https://pipenv.pypa.io/" \
+            --ignore-url="^https://squidfunk.github.io/" \
+            --ignore-url="^https://unpkg.com/" \
+            --ignore-url="^https://api\." \
+            --ignore-url="^https://doi.org/" \
+            --ignore-url="^https://www\.crossref\.org/" \
+            --ignore-url="^https://openalex.org/" \
+            --ignore-url="^https://www\.semanticscholar\.org/" \
+            --ignore-url="^https://arxiv\.org/" \
+            --ignore-url="^https://ollama\.com/" \
+            site/index.html
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
