@@ -4,6 +4,8 @@ A local-first research pipeline that retrieves academic papers from multiple sch
 
 Built with Python 3.13, pydantic-ai, sentence-transformers, and async I/O.
 
+**Documentation:** [https://ndevu12.github.io/Research_Assistant_Model/](https://ndevu12.github.io/Research_Assistant_Model/) — architecture, configuration, API, operations, and known issues.
+
 ## Features
 
 - **Multi-stage pipeline** — query understanding → expansion → retrieval → deduplication → ranking → clustering → synthesis → gap analysis → citation export → report generation
