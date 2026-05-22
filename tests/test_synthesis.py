@@ -1,0 +1,531 @@
+# -*- coding: utf-8 -*-
+"""Tests for cross-paper synthesis and gap analysis."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from src.analysis.gap_analysis import (
+    GapAnalysisStage,
+    analyze_gaps,
+    recover_gap_analysis_output,
+    resolve_synthesis_input,
+    _heuristic_gap_analysis,
+)
+from src.analysis.synthesis import (
+    SynthesisStage,
+    _heuristic_extraction,
+    _heuristic_synthesis,
+    extract_papers,
+    recover_synthesis_output,
+    run_synthesis,
+    synthesize_collective,
+)
+from src.core.stage_recovery import recover_stage_output
+from src.config.settings import AppSettings
+from src.core.context import PipelineContext
+from src.core.pipeline import ResearchPipeline
+from src.research.clustering import ClusteringStage
+from pydantic import ValidationError
+
+from src.retrieval.models import (
+    GapAnalysisResult,
+    PaperCluster,
+    PaperExtraction,
+    RankedPaper,
+    RetrievedPaper,
+    SynthesisResult,
+)
+from src.utils.enhanced_response_handler import EnhancedResponseHandler
+from src.utils.response_models import ProcessingPath, ProcessingResult
+
+
+def _paper(title: str, **kwargs: object) -> RetrievedPaper:
+    return RetrievedPaper(title=title, provider="openalex", **kwargs)
+
+
+def _ranked(title: str, **kwargs: object) -> RankedPaper:
+    return RankedPaper(paper=_paper(title, **kwargs), rank_score=0.9)
+
+
+def _mock_handler_success(data: object) -> EnhancedResponseHandler:
+    handler = MagicMock(spec=EnhancedResponseHandler)
+    handler.process_structured_response = AsyncMock(
+        return_value=ProcessingResult(
+            success=True,
+            data=data,
+            processing_path=ProcessingPath.DIRECT_SUCCESS,
+        )
+    )
+    return handler
+
+
+def _mock_handler_failure() -> EnhancedResponseHandler:
+    handler = MagicMock(spec=EnhancedResponseHandler)
+    handler.process_structured_response = AsyncMock(
+        return_value=ProcessingResult(
+            success=False,
+            processing_path=ProcessingPath.COMPLETE_FAILURE,
+        )
+    )
+    return handler
+
+
+def _llm_synthesis_config(**overrides: object):
+    config = {
+        "llm_enabled": True,
+        "max_llm_papers": 10,
+        "extraction_max_retries": 0,
+        "collective_max_retries": 0,
+        "concurrency": 2,
+    }
+    config.update(overrides)
+    return AppSettings(synthesis=config).synthesis
+
+
+class TestSynthesisModels:
+    def test_synthesis_result_schema_accepts_all_fields(self) -> None:
+        synthesis = SynthesisResult(
+            agreements=["Shared transformer adoption"],
+            disagreements=["CNN vs transformer on small data"],
+            trends=["Shift toward pre-training"],
+            gaps=["Limited multilingual evaluation"],
+            datasets=["GLUE", "SQuAD"],
+            methodologies=["Self-attention", "Fine-tuning"],
+        )
+
+        assert synthesis.model_dump() == {
+            "agreements": ["Shared transformer adoption"],
+            "disagreements": ["CNN vs transformer on small data"],
+            "trends": ["Shift toward pre-training"],
+            "gaps": ["Limited multilingual evaluation"],
+            "datasets": ["GLUE", "SQuAD"],
+            "methodologies": ["Self-attention", "Fine-tuning"],
+        }
+
+    def test_synthesis_result_schema_defaults_to_empty_lists(self) -> None:
+        synthesis = SynthesisResult()
+
+        assert synthesis.agreements == []
+        assert synthesis.disagreements == []
+        assert synthesis.trends == []
+        assert synthesis.gaps == []
+        assert synthesis.datasets == []
+        assert synthesis.methodologies == []
+
+    def test_synthesis_result_schema_rejects_invalid_field_types(self) -> None:
+        with pytest.raises(ValidationError):
+            SynthesisResult(agreements="not-a-list")  # type: ignore[arg-type]
+
+    def test_synthesis_result_round_trips_through_json(self) -> None:
+        original = SynthesisResult(
+            agreements=["Agreement"],
+            gaps=["Gap"],
+            methodologies=["Method"],
+        )
+
+        restored = SynthesisResult.model_validate_json(original.model_dump_json())
+
+        assert restored == original
+
+    def test_paper_extraction_schema(self) -> None:
+        extraction = PaperExtraction(
+            paper_id="10.1000/a",
+            title="Transformer Study",
+            methodology=["Self-attention"],
+            datasets=["WMT"],
+            benchmarks=["BLEU"],
+            limitations=["Small sample"],
+            findings=["Outperforms RNN baselines"],
+        )
+
+        assert extraction.paper_id == "10.1000/a"
+        assert extraction.findings == ["Outperforms RNN baselines"]
+
+    def test_gap_analysis_result_schema(self) -> None:
+        result = GapAnalysisResult(
+            gaps=["Limited multilingual evaluation"],
+            opportunities=["Benchmark on low-resource languages"],
+            underexplored_areas=["Cross-lingual transfer"],
+        )
+
+        assert len(result.opportunities) == 1
+
+
+class TestHeuristicSynthesis:
+    def test_heuristic_extraction_uses_abstract(self) -> None:
+        ranked = _ranked(
+            "Attention paper",
+            abstract="We propose attention. It works well. Limited to English.",
+        )
+        extraction = _heuristic_extraction(ranked)
+
+        assert extraction.title == "Attention paper"
+        assert len(extraction.findings) >= 1
+
+    def test_heuristic_synthesis_aggregates_extractions(self) -> None:
+        extractions = [
+            PaperExtraction(
+                paper_id="a",
+                title="Paper A",
+                methodology=["Transformers"],
+                datasets=["GLUE"],
+                findings=["Strong accuracy"],
+                limitations=["English only"],
+            ),
+            PaperExtraction(
+                paper_id="b",
+                title="Paper B",
+                methodology=["Transformers"],
+                datasets=["SQuAD"],
+                findings=["Good F1"],
+                limitations=["High compute"],
+            ),
+        ]
+        clusters = [
+            PaperCluster(theme="Transformers", summary="NLP papers", paper_ids=["a", "b"]),
+        ]
+
+        synthesis = _heuristic_synthesis("transformers NLP", extractions, clusters)
+
+        assert isinstance(synthesis, SynthesisResult)
+        assert synthesis.datasets
+        assert synthesis.methodologies
+        assert synthesis.gaps
+
+    def test_heuristic_gap_analysis_expands_synthesis(self) -> None:
+        synthesis = SynthesisResult(
+            gaps=["No multilingual benchmarks"],
+            disagreements=["CNN vs transformer on small data"],
+            trends=["Shift toward pre-training"],
+        )
+        clusters = [PaperCluster(theme="Efficiency", summary="Small models", paper_ids=["x"])]
+
+        result = _heuristic_gap_analysis(synthesis, "NLP", clusters)
+
+        assert "No multilingual benchmarks" in result.gaps
+        assert result.opportunities
+
+
+class TestSynthesisWorkflow:
+    @pytest.mark.asyncio
+    async def test_extract_papers_uses_handler(self) -> None:
+        ranked = [_ranked("Paper One", abstract="Findings here.")]
+        expected = PaperExtraction(
+            paper_id="Paper One",
+            title="Paper One",
+            findings=["Finding"],
+        )
+        handler = _mock_handler_success(expected)
+
+        extractions = await extract_papers(
+            ranked,
+            "test query",
+            handler=handler,
+            concurrency=1,
+            synthesis_config=_llm_synthesis_config(max_llm_papers=1),
+        )
+
+        assert len(extractions) == 1
+        assert extractions[0].title == "Paper One"
+        handler.process_structured_response.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_extract_papers_falls_back_on_handler_failure(self) -> None:
+        ranked = [_ranked("Paper Two", abstract="Some results.")]
+        handler = _mock_handler_failure()
+
+        extractions = await extract_papers(
+            ranked,
+            "test query",
+            handler=handler,
+            concurrency=1,
+            synthesis_config=_llm_synthesis_config(max_llm_papers=1),
+        )
+
+        assert len(extractions) == 1
+        assert extractions[0].title == "Paper Two"
+
+    @pytest.mark.asyncio
+    async def test_synthesize_collective_validates_schema(self) -> None:
+        extractions = [
+            PaperExtraction(paper_id="a", title="A", findings=["Result"]),
+        ]
+        expected = SynthesisResult(
+            agreements=["Shared transformer usage"],
+            gaps=["Need more benchmarks"],
+        )
+        handler = _mock_handler_success(expected)
+
+        synthesis = await synthesize_collective(
+            "transformers",
+            extractions,
+            [],
+            handler=handler,
+            synthesis_config=_llm_synthesis_config(),
+        )
+
+        assert synthesis.agreements == ["Shared transformer usage"]
+        assert synthesis.gaps == ["Need more benchmarks"]
+
+    @pytest.mark.asyncio
+    async def test_run_synthesis_two_pass_workflow(self) -> None:
+        ranked = [
+            _ranked("Paper A", abstract="Method A findings."),
+            _ranked("Paper B", abstract="Method B findings."),
+        ]
+        clusters = [PaperCluster(theme="Methods", summary="Comparison", paper_ids=["Paper A", "Paper B"])]
+
+        extraction_a = PaperExtraction(paper_id="Paper A", title="Paper A", findings=["A"])
+        extraction_b = PaperExtraction(paper_id="Paper B", title="Paper B", findings=["B"])
+        synthesis = SynthesisResult(agreements=["Both use deep learning"], gaps=["Scale"])
+
+        handler = MagicMock(spec=EnhancedResponseHandler)
+        handler.process_structured_response = AsyncMock(
+            side_effect=[
+                ProcessingResult(success=True, data=extraction_a, processing_path=ProcessingPath.DIRECT_SUCCESS),
+                ProcessingResult(success=True, data=extraction_b, processing_path=ProcessingPath.DIRECT_SUCCESS),
+                ProcessingResult(success=True, data=synthesis, processing_path=ProcessingPath.DIRECT_SUCCESS),
+            ]
+        )
+
+        result, extractions, analyses = await run_synthesis(
+            "deep learning",
+            ranked,
+            clusters,
+            handler=handler,
+            concurrency=2,
+            synthesis_config=_llm_synthesis_config(max_llm_papers=2),
+        )
+
+        assert len(extractions) == 2
+        assert result.agreements == ["Both use deep learning"]
+        assert len(analyses) == 2
+        assert handler.process_structured_response.await_count == 3
+
+
+class TestGapAnalysis:
+    @pytest.mark.asyncio
+    async def test_analyze_gaps_uses_handler(self) -> None:
+        synthesis = SynthesisResult(gaps=["Missing ablations"])
+        expected = GapAnalysisResult(
+            gaps=["Missing ablations"],
+            opportunities=["Run systematic ablations"],
+        )
+        handler = _mock_handler_success(expected)
+
+        result = await analyze_gaps("query", synthesis, handler=handler)
+
+        assert result.opportunities == ["Run systematic ablations"]
+
+    @pytest.mark.asyncio
+    async def test_analyze_gaps_heuristic_fallback(self) -> None:
+        synthesis = SynthesisResult(gaps=["Understudied domain"])
+        handler = _mock_handler_failure()
+
+        result = await analyze_gaps("query", synthesis, handler=handler)
+
+        assert "Understudied domain" in result.gaps
+        assert result.opportunities
+
+
+class TestSynthesisPipelineStages:
+    @pytest.mark.asyncio
+    async def test_synthesis_stage_records_artifacts(self) -> None:
+        ranked = [_ranked("Stage Paper", abstract="Results.")]
+        clusters = [PaperCluster(theme="Theme", summary="Summary", paper_ids=["Stage Paper"])]
+        ctx = PipelineContext.create("stage test", AppSettings())
+        ctx.set_artifact("ranked_papers", ranked)
+
+        extraction = PaperExtraction(paper_id="Stage Paper", title="Stage Paper", findings=["F"])
+        synthesis = SynthesisResult(agreements=["Agreement"], gaps=["Gap"])
+
+        handler = MagicMock(spec=EnhancedResponseHandler)
+        handler.process_structured_response = AsyncMock(
+            side_effect=[
+                ProcessingResult(success=True, data=extraction, processing_path=ProcessingPath.DIRECT_SUCCESS),
+                ProcessingResult(success=True, data=synthesis, processing_path=ProcessingPath.DIRECT_SUCCESS),
+            ]
+        )
+
+        stage = SynthesisStage(handler=handler)
+        result = await stage.run(ctx, clusters)
+
+        assert isinstance(result.output, SynthesisResult)
+        assert ctx.get_artifact("paper_extractions") is not None
+        assert ctx.get_artifact("paper_analyses") is not None
+        assert result.metrics["papers_extracted"] == 1
+
+    @pytest.mark.asyncio
+    async def test_gap_analysis_stage(self) -> None:
+        synthesis = SynthesisResult(gaps=["Gap one"])
+        ctx = PipelineContext.create(
+            "gap stage",
+            AppSettings(synthesis={"llm_enabled": True}),
+        )
+        ctx.set_artifact("paper_clusters", [PaperCluster(theme="T", paper_ids=["p1"])])
+
+        gap_result = GapAnalysisResult(
+            gaps=["Gap one"],
+            opportunities=["Opportunity one"],
+        )
+        handler = _mock_handler_success(gap_result)
+        stage = GapAnalysisStage(handler=handler)
+
+        result = await stage.run(ctx, synthesis)
+
+        assert isinstance(result.output, GapAnalysisResult)
+        assert ctx.get_artifact("gap_analysis") == gap_result
+
+    @pytest.mark.asyncio
+    async def test_pipeline_includes_synthesis_and_gap_stages(self) -> None:
+        ranked = [_ranked("Pipeline Paper", abstract="Content.", year=2024)]
+        clusters = [PaperCluster(theme="Theme", summary="Summary", paper_ids=["Pipeline Paper"])]
+
+        class ClusteringStub:
+            name = "clustering"
+
+            async def run(self, ctx: PipelineContext, data: object) -> object:
+                from src.core.context import StageResult
+
+                ctx.set_artifact("ranked_papers", ranked)
+                ctx.set_artifact("paper_clusters", clusters)
+                return StageResult(output=clusters, duration_ms=1.0)
+
+        extraction = PaperExtraction(paper_id="Pipeline Paper", title="Pipeline Paper", findings=["F"])
+        synthesis = SynthesisResult(agreements=["A"], gaps=["G"])
+        gap_result = GapAnalysisResult(gaps=["G"], opportunities=["O"])
+
+        handler = MagicMock(spec=EnhancedResponseHandler)
+        handler.process_structured_response = AsyncMock(
+            side_effect=[
+                ProcessingResult(success=True, data=extraction, processing_path=ProcessingPath.DIRECT_SUCCESS),
+                ProcessingResult(success=True, data=synthesis, processing_path=ProcessingPath.DIRECT_SUCCESS),
+                ProcessingResult(success=True, data=gap_result, processing_path=ProcessingPath.DIRECT_SUCCESS),
+            ]
+        )
+
+        pipeline = ResearchPipeline(
+            [
+                ClusteringStub(),
+                SynthesisStage(handler=handler),
+                GapAnalysisStage(handler=handler),
+            ],
+            AppSettings(
+                pipeline={
+                    "enabled_stages": {
+                        "clustering": True,
+                        "synthesis": True,
+                        "gap_analysis": True,
+                    }
+                }
+            ),
+        )
+
+        with patch("src.analysis.synthesis.create_llm_agent", return_value=MagicMock()):
+            result = await pipeline.execute("pipeline query")
+
+        assert "synthesis" in result.stage_results
+        assert "gap_analysis" in result.stage_results
+        assert isinstance(result.output, GapAnalysisResult)
+
+
+class TestStageRecovery:
+    @pytest.mark.asyncio
+    async def test_gap_analysis_accepts_cluster_list_after_synthesis_timeout(self) -> None:
+        clusters = [PaperCluster(theme="Attention", summary="Summary", paper_ids=["p1"])]
+        ranked = [_ranked("Attention Paper", abstract="Self-attention for transformers.", year=2023)]
+        ctx = PipelineContext.create("transformer attention", AppSettings())
+        ctx.set_artifact("ranked_papers", ranked)
+        ctx.set_artifact("paper_clusters", clusters)
+
+        stage = GapAnalysisStage(handler=_mock_handler_failure())
+        result = await stage.run(ctx, clusters)
+
+        assert isinstance(result.output, GapAnalysisResult)
+        assert result.output.gaps
+        assert ctx.get_artifact("gap_analysis") is not None
+
+    def test_recover_synthesis_output_builds_artifacts(self) -> None:
+        clusters = [PaperCluster(theme="Theme", summary="Summary", paper_ids=["Paper A"])]
+        ranked = [_ranked("Paper A", abstract="Uses attention.", year=2022)]
+        ctx = PipelineContext.create("attention", AppSettings())
+        ctx.set_artifact("ranked_papers", ranked)
+
+        synthesis = recover_synthesis_output(ctx, clusters)
+
+        assert isinstance(synthesis, SynthesisResult)
+        assert ctx.get_artifact("paper_analyses")
+        assert ctx.get_artifact("synthesis_result") == synthesis
+
+    def test_recover_stage_output_after_synthesis_timeout(self) -> None:
+        clusters = [PaperCluster(theme="Theme", summary="Summary", paper_ids=["Paper B"])]
+        ranked = [_ranked("Paper B", abstract="Benchmark results.", year=2021)]
+        ctx = PipelineContext.create("benchmarks", AppSettings())
+        ctx.set_artifact("ranked_papers", ranked)
+
+        output = recover_stage_output("synthesis", ctx, clusters)
+
+        assert isinstance(output, SynthesisResult)
+        assert ctx.get_artifact("paper_analyses")
+
+    @pytest.mark.asyncio
+    async def test_extract_papers_limits_llm_calls(self) -> None:
+        ranked = [_ranked(f"Paper {index}", abstract=f"Abstract {index}") for index in range(12)]
+        handler = _mock_handler_success(
+            PaperExtraction(
+                paper_id="x",
+                title="Paper",
+                methodology=["m"],
+                datasets=["d"],
+                benchmarks=[],
+                limitations=[],
+                findings=["f"],
+            )
+        )
+
+        settings = AppSettings(
+            synthesis={
+                "llm_enabled": True,
+                "max_llm_papers": 3,
+                "extraction_max_retries": 0,
+                "concurrency": 2,
+            },
+        )
+
+        extractions = await extract_papers(
+            ranked,
+            "query",
+            handler=handler,
+            synthesis_config=settings.synthesis,
+        )
+
+        assert len(extractions) == 12
+        assert handler.process_structured_response.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_extract_papers_skips_llm_when_disabled(self) -> None:
+        ranked = [_ranked(f"Paper {index}") for index in range(5)]
+        handler = _mock_handler_success(
+            PaperExtraction(
+                paper_id="x",
+                title="Paper",
+                methodology=["m"],
+                datasets=["d"],
+                benchmarks=[],
+                limitations=[],
+                findings=["f"],
+            )
+        )
+
+        extractions = await extract_papers(
+            ranked,
+            "query",
+            handler=handler,
+            synthesis_config=AppSettings(synthesis={"llm_enabled": False}).synthesis,
+        )
+
+        assert len(extractions) == 5
+        assert handler.process_structured_response.await_count == 0

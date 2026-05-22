@@ -9,23 +9,16 @@ from .models import RetrievedPaper
 
 def _normalize_title(t: str) -> str:
     """Normalize a paper title for comparison."""
-    t = t.lower().strip()
-    t = re.sub(r"\s+", " ", t)
-    t = re.sub(r"[^a-z0-9 ]+", "", t)
-    return t
+    from .deduplication import normalize_title
+
+    return normalize_title(t)
 
 
 def _dedupe(papers: list[RetrievedPaper]) -> list[RetrievedPaper]:
     """Remove duplicate papers based on DOI and normalized title."""
-    seen: set[tuple[Optional[str], str]] = set()
-    out: list[RetrievedPaper] = []
-    for p in papers:
-        key = (p.doi.lower().strip() if p.doi else None, _normalize_title(p.title))
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(p)
-    return out
+    from .deduplication import dedupe_by_metadata
+
+    return dedupe_by_metadata(papers)
 
 
 def _openalex_abstract_from_inverted_index(inv: Optional[dict[str, list[int]]]) -> Optional[str]:

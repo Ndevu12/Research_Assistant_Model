@@ -11,6 +11,11 @@ from pathlib import Path
 # Add parent directory to path to import logging system
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.config.model_selection import (
+    ModelSelectionResult,
+    is_model_installed,
+    resolve_target_model,
+)
 from src.utils.logging_system import logger
 
 
@@ -66,8 +71,7 @@ def install_ollama() -> None:
     logger.info("Ollama installed successfully.")
 
 
-def setup_ollama(model_name: str = "llama3.2:3b") -> None:
-    """Start Ollama server if not running, then pull the model if needed."""
+def _ensure_ollama_server() -> None:
     try:
         subprocess.run(["ollama", "list"], capture_output=True, check=True, timeout=5)
         logger.info("Ollama server already running.")
@@ -80,30 +84,54 @@ def setup_ollama(model_name: str = "llama3.2:3b") -> None:
         )
         time.sleep(5)
 
-    # Check if model exists - check for full model name with tag
-    result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
-    model_exists = any(model_name in line for line in result.stdout.splitlines())
-    
-    if not model_exists:
-        logger.info(f"Model '{model_name}' not found. Pulling...")
-        # Retry pull up to 3 times
-        for attempt in range(3):
-            try:
-                subprocess.run(["ollama", "pull", model_name], check=True)
-                logger.info("Model pull complete.")
-                break
-            except subprocess.CalledProcessError as e:
-                if attempt == 2:
-                    raise RuntimeError(f"Failed to pull model after 3 attempts: {e}")
-                logger.warning(f"Pull attempt {attempt + 1} failed. Retrying in 5 seconds...")
-                time.sleep(5)
-    else:
-        logger.info(f"Model '{model_name}' already available.")
+
+def _log_selection(selection: ModelSelectionResult) -> None:
+    logger.info(selection.reason)
+    logger.info(
+        "System resources: %.1f GB RAM available / %.1f GB total, "
+        "%.1f GB disk free, swap pressure %.0f%%",
+        selection.resources.available_ram_gb,
+        selection.resources.total_ram_gb,
+        selection.resources.free_disk_gb,
+        selection.resources.swap_pressure * 100,
+    )
+    if selection.spec and selection.spec.synthesis.llm_enabled:
+        logger.info(
+            "Tip: enable LLM synthesis for this model with RA_SYNTHESIS__LLM_ENABLED=true"
+        )
+
+
+def setup_ollama(model_name: str | None = None) -> ModelSelectionResult:
+    """Start Ollama server if needed, resolve model, and pull if missing."""
+    selection = resolve_target_model(model_name)
+    _log_selection(selection)
+
+    _ensure_ollama_server()
+
+    if is_model_installed(selection.model_name):
+        logger.info(f"Model '{selection.model_name}' already available.")
+        return selection
+
+    logger.info(f"Model '{selection.model_name}' not found. Pulling...")
+    for attempt in range(3):
+        try:
+            subprocess.run(["ollama", "pull", selection.model_name], check=True)
+            logger.info("Model pull complete.")
+            return selection
+        except subprocess.CalledProcessError as exc:
+            if attempt == 2:
+                raise RuntimeError(
+                    f"Failed to pull model '{selection.model_name}' after 3 attempts: {exc}"
+                ) from exc
+            logger.warning(f"Pull attempt {attempt + 1} failed. Retrying in 5 seconds...")
+            time.sleep(5)
+
+    return selection
 
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Ollama setup utility")
     parser.add_argument(
         "command",
@@ -112,12 +140,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model",
-        default="llama3.2:3b",
-        help="Model name for setup command (default: llama3.2:3b)"
+        default=None,
+        help="Ollama model to install (default: auto-select from config/ollama_models.yaml)",
     )
-    
+
     args = parser.parse_args()
-    
+
     try:
         if args.command == "install":
             install_ollama()

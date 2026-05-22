@@ -61,8 +61,8 @@ class TestCompleteInteractiveWorkflow:
                 with patch('sys.stdout', captured_output):
                     run_interactive_mode()
                 
-                # Verify all queries were processed
-                assert mock_run.call_count == 3
+                # Verify all queries were processed (1 session init + 3 queries)
+                assert mock_run.call_count == 4
                 
                 output = captured_output.getvalue()
                 
@@ -170,8 +170,8 @@ class TestCompleteInteractiveWorkflow:
                 with patch('sys.stdout', captured_output):
                     run_interactive_mode()
                 
-                # Verify both queries were processed in the same session
-                assert mock_run.call_count == 2
+                # Verify both queries were processed in the same session (1 init + 2 queries)
+                assert mock_run.call_count == 3
                 
                 output = captured_output.getvalue()
                 
@@ -203,8 +203,8 @@ class TestCompleteInteractiveWorkflow:
                 with patch('sys.stdout', captured_output):
                     run_interactive_mode()
                 
-                # Verify only valid queries were processed (3 queries)
-                assert mock_run.call_count == 3
+                # Verify only valid queries were processed (1 init + 3 queries)
+                assert mock_run.call_count == 4
                 
                 output = captured_output.getvalue()
                 

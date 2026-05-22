@@ -9,8 +9,9 @@ and content quality validation.
 import asyncio
 import json
 import time
-from typing import Optional, Any
+from typing import Optional, Any, Type
 
+from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from .response_models import (
@@ -104,11 +105,13 @@ class EnhancedResponseHandler:
             }
         )
         
-        # Import necessary functions from orchestrator
-        from ..retrieval.orchestrator import (
-            _extract_and_clean_json, _validate_json_structure, 
-            _enhance_validation_with_retry_strategy, _enhanced_partial_recovery
+        # Import necessary functions from retrieval helpers
+        from ..retrieval.helpers_modules.json_extraction import extract_and_clean_json
+        from ..retrieval.helpers_modules.validation import (
+            enhance_validation_with_retry_strategy,
+            validate_json_structure,
         )
+        from ..retrieval.helpers_modules.recovery import enhanced_partial_recovery
         from ..retrieval.models import ResearchReport
         
         current_prompt = prompt
@@ -169,12 +172,12 @@ class EnhancedResponseHandler:
                 
                 # Use existing extraction and validation
                 try:
-                    clean_json = _extract_and_clean_json(raw_output)
+                    clean_json = extract_and_clean_json(raw_output)
                     parsed = json.loads(clean_json)
                     
                     # Use existing validation with enhancement
-                    validation_result = _validate_json_structure(parsed)
-                    enhanced_validation = _enhance_validation_with_retry_strategy(validation_result)
+                    validation_result = validate_json_structure(parsed)
+                    enhanced_validation = enhance_validation_with_retry_strategy(validation_result)
                     
                     if debug_info:
                         debug_info["validation_history"].append({
@@ -315,7 +318,7 @@ class EnhancedResponseHandler:
                                 }
                             )
                             
-                            recovery_result = _enhanced_partial_recovery(
+                            recovery_result = enhanced_partial_recovery(
                                 raw_output, clean_json, parsed, self.config.recovery_config, context.user_query
                             )
                             
@@ -488,6 +491,167 @@ class EnhancedResponseHandler:
             success=False,
             processing_path=ProcessingPath.COMPLETE_FAILURE,
             debug_info=debug_info
+        )
+
+    async def process_structured_response(
+        self,
+        agent: Agent,
+        prompt: str,
+        context: RequestContext,
+        response_model: Type[BaseModel],
+        schema_description: str | None = None,
+    ) -> ProcessingResult:
+        """Process an LLM response and validate it against an arbitrary Pydantic model.
+
+        Uses the same retry, recovery, and quality monitoring paths as
+        :meth:`process_response_with_retries`, but skips ResearchReport-specific
+        structure validation and content-quality checks.
+        """
+        start_time = time.time()
+        debug_info = {
+            "original_prompt": prompt,
+            "retry_attempts": [],
+            "validation_history": [],
+            "recovery_attempts": [],
+            "response_model": response_model.__name__,
+        } if self.config.debug_mode else None
+
+        from ..retrieval.helpers_modules.json_extraction import extract_and_clean_json
+
+        schema_hint = schema_description or json.dumps(
+            {
+                field: "..."
+                for field in response_model.model_fields
+            },
+            indent=2,
+        )
+        current_prompt = (
+            f"{prompt}\n\nRespond with ONLY valid JSON matching this schema:\n{schema_hint}"
+        )
+
+        for attempt in range(self.retry_manager.config.max_retries + 1):
+            try:
+                attempt_context = RequestContext(
+                    user_query=context.user_query,
+                    model_name=context.model_name,
+                    attempt_count=attempt,
+                    previous_errors=context.previous_errors.copy(),
+                    timestamp=context.timestamp,
+                    session_id=context.session_id,
+                )
+
+                if attempt > 0:
+                    delay = await self.retry_manager.get_retry_delay(attempt)
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+
+                if attempt == 0:
+                    current_prompt = self.adaptation_engine.enhance_prompt_for_model(
+                        current_prompt, attempt_context
+                    )
+
+                result = await agent.run(current_prompt)
+                raw_output = result.output
+
+                if debug_info is not None:
+                    debug_info["retry_attempts"].append({
+                        "attempt": attempt,
+                        "prompt": current_prompt,
+                        "raw_response": raw_output[:500] + "..." if len(raw_output) > 500 else raw_output,
+                    })
+
+                adaptation_result = self.adaptation_engine.preprocess_response(
+                    raw_output, attempt_context
+                )
+                if adaptation_result.success:
+                    raw_output = adaptation_result.adapted_response
+
+                try:
+                    clean_json = extract_and_clean_json(raw_output)
+                    parsed = json.loads(clean_json)
+                    validated = response_model.model_validate(parsed)
+
+                    processing_path = (
+                        ProcessingPath.RETRY_SUCCESS if attempt > 0 else ProcessingPath.DIRECT_SUCCESS
+                    )
+                    self.quality_monitor.record_success(attempt_context, processing_path)
+
+                    duration_ms = (time.time() - start_time) * 1000
+                    self.logger.log_performance(
+                        operation="structured_response_processing_complete",
+                        duration_ms=duration_ms,
+                        success=True,
+                        extra_data={
+                            "processing_path": processing_path.value,
+                            "total_attempts": attempt + 1,
+                            "response_model": response_model.__name__,
+                            "session_id": context.session_id,
+                        },
+                    )
+
+                    return ProcessingResult(
+                        success=True,
+                        data=validated,
+                        processing_path=processing_path,
+                        quality_score=1.0,
+                        debug_info=debug_info,
+                    )
+
+                except json.JSONDecodeError as exc:
+                    if attempt == self.retry_manager.config.max_retries:
+                        self.quality_monitor.record_failure(
+                            attempt_context, "json_syntax", False, True
+                        )
+                        return ProcessingResult(
+                            success=False,
+                            processing_path=ProcessingPath.COMPLETE_FAILURE,
+                            debug_info=debug_info,
+                        )
+
+                    self.quality_monitor.record_retry(attempt_context, "json_syntax")
+                    current_prompt = self.retry_manager.enhance_prompt_for_syntax_error(
+                        current_prompt, str(exc)
+                    )
+                    continue
+
+                except Exception as validation_error:
+                    if attempt == self.retry_manager.config.max_retries:
+                        self.quality_monitor.record_failure(
+                            attempt_context, "schema", False, True
+                        )
+                        return ProcessingResult(
+                            success=False,
+                            processing_path=ProcessingPath.COMPLETE_FAILURE,
+                            debug_info=debug_info,
+                        )
+
+                    self.quality_monitor.record_retry(attempt_context, "schema")
+                    current_prompt = self.retry_manager.enhance_prompt_generic(
+                        current_prompt, str(validation_error)
+                    )
+                    continue
+
+            except Exception as exc:
+                if attempt == self.retry_manager.config.max_retries:
+                    self.quality_monitor.record_failure(
+                        attempt_context, "unexpected", False, True
+                    )
+                    return ProcessingResult(
+                        success=False,
+                        processing_path=ProcessingPath.COMPLETE_FAILURE,
+                        debug_info=debug_info,
+                    )
+
+                self.quality_monitor.record_retry(attempt_context, "unexpected")
+                current_prompt = self.retry_manager.enhance_prompt_generic(
+                    current_prompt, str(exc)
+                )
+                continue
+
+        return ProcessingResult(
+            success=False,
+            processing_path=ProcessingPath.COMPLETE_FAILURE,
+            debug_info=debug_info,
         )
     
     def get_quality_report(self):

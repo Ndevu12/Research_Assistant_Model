@@ -1,0 +1,25 @@
+# Retrieval provider overrides (merged into AppSettings.retrieval)
+concurrency_limit: 4
+per_provider_limit: 8
+providers:
+  openalex:
+    enabled: true
+    limit: 8
+  semantic_scholar:
+    enabled: true
+    limit: 8
+  arxiv:
+    enabled: false
+    limit: 8
+  crossref:
+    enabled: false
+    limit: 8
+  pubmed:
+    enabled: false
+    limit: 8
+  core:
+    enabled: false
+    limit: 8
+  dblp:
+    enabled: false
+    limit: 8

@@ -1,119 +1,252 @@
 # -*- coding: utf-8 -*-
-"""Orchestrator function for the retrieval module."""
+"""Orchestrator facade for the composable research pipeline."""
 
-import asyncio
-import json
-import re
-import sys
-from pathlib import Path
-from typing import List, Optional
+from __future__ import annotations
 
-import aiohttp
+from typing import Optional
 
-from .helpers import _dedupe
-from .helpers_modules.json_extraction import extract_and_clean_json
-from .helpers_modules.validation import validate_json_structure, enhance_validation_with_retry_strategy
-from .helpers_modules.recovery import attempt_partial_recovery, enhanced_partial_recovery
-from .models import PaperAnalysis, ResearchReport, RetrievedPaper
-from .openalex import search_openalex
-from .rendering import render_markdown
-from .semanticscholar import search_semantic_scholar
-from ..analysis.llm import analysis_agent
+from ..analysis.gap_analysis import GapAnalysisStage
+from ..analysis.synthesis import SynthesisStage
+from ..config.settings import AppSettings
+from ..core.context import ResearchSession
+from ..core.pipeline import ResearchPipeline, ResearchPipelineResult
+from ..reporting.output import render_report_output
+from ..memory.store import MemoryStore, build_cache_key, build_config_hash
+from ..reporting.citations import CitationExportStage
+from ..reporting.markdown import render_enhanced_markdown
+from ..reporting.report_generation import ReportGenerationStage
+from ..research.clustering import ClusteringStage
+from ..research.query_expansion import QueryExpansionStage
+from ..research.query_understanding import QueryUnderstandingStage
+from ..research.ranking import RankingStage
+from ..research.relevance_scoring import RelevanceScoringStage
+from ..retrieval.deduplication import DeduplicationStage
+from ..retrieval.models import EnhancedResearchReport, RankedPaper, RetrievedPaper
+from ..retrieval.retrieval_stage import RetrievalStage
 from ..utils.message_formatter import MessageFormatter
-from ..utils.response_models import RecoveryConfig
-from ..utils.logging_system import logger
 
 
-
-
-async def run_research_helper(user_text: str, k_each: int = 8) -> None:
-    """Run the research helper with papers from multiple sources."""
-    async with aiohttp.ClientSession() as session:
-        try:
-            openalex_papers, s2_papers = await asyncio.gather(
-                search_openalex(session, user_text, per_page=k_each),
-                search_semantic_scholar(session, user_text, limit=k_each),
-            )
-        except Exception as e:
-            print(MessageFormatter.network_error(str(e)))
-            return
-
-    top = _dedupe(openalex_papers + s2_papers)[:10]
-
-    if not top:
-        print(MessageFormatter.no_results_message())
-        return
-
-    payload_items = [
-        {
-            "title": p.title,
-            "abstract": p.abstract[:500] if p.abstract else "No abstract provided.",
-            "url": p.url or p.doi,
-        }
-        for p in top
-    ]
-
-    # Properly serialize payload_items to JSON to ensure proper escaping
-    payload_json = json.dumps(payload_items, ensure_ascii=False)
-
-    prompt = (
-        f"User Query: {user_text}\n\n"
-        f"Analyze these papers and return ONLY a JSON object.\n"
-        f"Data: {payload_json}"
+def build_pipeline(settings: AppSettings) -> ResearchPipeline:
+    """Construct the default research pipeline from application settings."""
+    return ResearchPipeline(
+        [
+            QueryUnderstandingStage(),
+            QueryExpansionStage(),
+            RetrievalStage(),
+            DeduplicationStage(),
+            RankingStage(),
+            RelevanceScoringStage(),
+            ClusteringStage(),
+            SynthesisStage(),
+            GapAnalysisStage(),
+            CitationExportStage(),
+            ReportGenerationStage(),
+        ],
+        settings,
     )
 
-    result = await analysis_agent.run(prompt)
+
+def _resolve_report(result: ResearchPipelineResult, query: str) -> EnhancedResearchReport:
+    report = result.output
+    if isinstance(report, EnhancedResearchReport):
+        return report
+    artifact = result.artifacts.get("enhanced_report")
+    if artifact:
+        return EnhancedResearchReport.model_validate(artifact)
+    return EnhancedResearchReport(query=query)
+
+
+async def _persist_memory(
+    store: MemoryStore,
+    session: ResearchSession,
+    query: str,
+    result: ResearchPipelineResult,
+    report: EnhancedResearchReport,
+    settings: AppSettings,
+) -> None:
+    """Save search, papers, and report to the memory store."""
+    enabled_providers = [name for name, cfg in settings.retrieval.providers.items() if cfg.enabled]
+    cache_key = build_cache_key(query, enabled_providers, build_config_hash(settings))
+
+    expanded: list[str] = []
+    search_id = await store.save_search(
+        session.id,
+        query,
+        expanded_queries=expanded,
+        cache_key=cache_key,
+    )
+
+    ranked = result.artifacts.get("ranked_papers") or []
+    papers: list[RetrievedPaper] = []
+    for item in ranked:
+        if isinstance(item, RankedPaper):
+            papers.append(item.paper)
+        elif isinstance(item, dict):
+            papers.append(RetrievedPaper.model_validate(item["paper"]))
+
+    if not papers:
+        retrieved = result.artifacts.get("retrieved_papers") or []
+        papers = [RetrievedPaper.model_validate(item) for item in retrieved]
+
+    if papers:
+        await store.save_papers(search_id, papers)
+
+    markdown = render_enhanced_markdown(
+        report,
+        partial=result.partial,
+        warnings=result.warnings,
+        citation_index=report.citation_index,
+        gap_analysis=report.gap_analysis,
+    )
+    await store.save_report(session.id, "markdown", markdown)
+
+
+async def run_research(
+    query: str,
+    settings: AppSettings | None = None,
+    session: ResearchSession | None = None,
+    store: MemoryStore | None = None,
+) -> EnhancedResearchReport:
+    """Run the full research pipeline and return an enhanced report."""
+    report, _ = await run_research_with_result(
+        query,
+        settings=settings,
+        session=session,
+        store=store,
+    )
+    return report
+
+
+async def run_research_with_result(
+    query: str,
+    settings: AppSettings | None = None,
+    session: ResearchSession | None = None,
+    store: MemoryStore | None = None,
+) -> tuple[EnhancedResearchReport, ResearchPipelineResult]:
+    """Run the pipeline and return both the report and full pipeline metadata."""
+    resolved_settings = settings or AppSettings()
+    resolved_session = session or ResearchSession(last_query=query)
+    resolved_store = store
+
+    if resolved_store is None and resolved_settings.memory.cache_enabled:
+        resolved_store = MemoryStore(resolved_settings.memory)
+        await resolved_store.initialize()
+
+    cache_hit_papers: list[dict] | None = None
+    if resolved_store and resolved_settings.memory.cache_enabled:
+        enabled_providers = [
+            name for name, cfg in resolved_settings.retrieval.providers.items() if cfg.enabled
+        ]
+        cache_key = build_cache_key(query, enabled_providers, build_config_hash(resolved_settings))
+        cached = await resolved_store.get_cached_search(cache_key)
+        if cached:
+            cache_hit_papers = cached.papers
+
+    pipeline = build_pipeline(resolved_settings)
+    initial_artifacts = {"cached_papers": cache_hit_papers} if cache_hit_papers else None
+    result = await pipeline.execute(
+        query,
+        session=resolved_session,
+        initial_artifacts=initial_artifacts,
+    )
+
+    report = _resolve_report(result, query)
+
+    if resolved_store:
+        await _persist_memory(
+            resolved_store,
+            resolved_session,
+            query,
+            result,
+            report,
+            resolved_settings,
+        )
+
+    return report, result
+
+
+async def run_research_helper(
+    user_text: str,
+    k_each: int = 8,
+    *,
+    return_report: bool = False,
+    output_format: str = "markdown",
+    export_formats: list[str] | None = None,
+    output_path: str | None = None,
+    session: ResearchSession | None = None,
+    store: MemoryStore | None = None,
+) -> Optional[EnhancedResearchReport]:
+    """Run the research helper and print a report by default.
+
+    When ``return_report`` is True, returns the :class:`EnhancedResearchReport`
+    instead of printing.
+    """
+    settings = AppSettings(
+        retrieval={
+            "per_provider_limit": k_each,
+            "providers": {
+                "openalex": {"enabled": True, "limit": k_each},
+                "semantic_scholar": {"enabled": True, "limit": k_each},
+            },
+        }
+    )
 
     try:
-        raw_output = result.output
-        clean_json = extract_and_clean_json(raw_output)
-        parsed_data = json.loads(clean_json)
-        
-        # Validate the parsed data
-        validation_result = validate_json_structure(parsed_data)
-        validation_result = enhance_validation_with_retry_strategy(validation_result)
-        
-        if not validation_result.is_valid:
-            print(validation_result.error_message)
-            if validation_result.show_raw_response:
-                print(MessageFormatter.raw_response_header())
-                print(raw_output)
-                attempt_partial_recovery(raw_output, clean_json, parsed_data)
-            return
-        
-        # Process the validated data
-        research_report = ResearchReport(
-            query=parsed_data["query"],
-            papers=[
-                PaperAnalysis(
-                    title=p.get("title", ""),
-                    year=p.get("year"),
-                    venue=p.get("venue"),
-                    url=p.get("url"),
-                    doi=p.get("doi"),
-                    key_points=p.get("key_points", []),
-                    why_relevant=p.get("why_relevant", []),
-                )
-                for p in parsed_data.get("papers", [])
-            ],
+        report, result = await run_research_with_result(
+            user_text,
+            settings=settings,
+            session=session,
+            store=store,
         )
-        
-        # Render the markdown output
-        markdown_output = render_markdown(research_report)
-        print(markdown_output)
-        
-    except json.JSONDecodeError as e:
-        print(MessageFormatter.parsing_error(str(e)))
-        print(MessageFormatter.raw_response_header())
-        print(raw_output)
-        attempt_partial_recovery(raw_output, clean_json, None)
-    except ValueError as e:
-        print(MessageFormatter.extraction_error(str(e)))
-        print(MessageFormatter.raw_response_header())
-        print(raw_output)
-        attempt_partial_recovery(raw_output, "", None)
-    except Exception as e:
-        print(MessageFormatter.error_message(str(e)))
-        print(MessageFormatter.raw_response_header())
-        print(raw_output)
-        attempt_partial_recovery(raw_output, "", None)
+    except Exception as exc:
+        print(MessageFormatter.network_error(str(exc)))
+        return None
+
+    if not report.papers and not result.partial:
+        print(MessageFormatter.no_results_message())
+        return report if return_report else None
+
+    rendered = render_report_output(
+        report,
+        output_format=output_format,
+        partial=result.partial,
+        warnings=result.warnings,
+        export_formats=export_formats,
+    )
+
+    if output_path:
+        from pathlib import Path
+
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(rendered, encoding="utf-8")
+        print(f"Report written to {path.resolve()}")
+        if output_format == "pdf":
+            print(
+                "PDF-ready HTML saved. Open in a browser and use Print → Save as PDF."
+            )
+    else:
+        if output_format in {"html", "pdf"}:
+            print(
+                "Tip: use --output report.html with --format pdf to save print-ready HTML."
+            )
+        print(rendered)
+
+    if export_formats:
+        from ..export import generate_citation_exports
+        from ..retrieval.models import RankedPaper
+
+        ranked_raw = result.artifacts.get("ranked_papers") or []
+        papers = [
+            RankedPaper.model_validate(item).paper for item in ranked_raw
+        ] if ranked_raw else []
+        if papers:
+            exports = generate_citation_exports(papers, formats=export_formats)
+            for fmt in export_formats:
+                content = exports.get(fmt)
+                if content:
+                    print(f"\n--- {fmt.upper()} Export ---\n{content}")
+
+    if return_report:
+        return report
+    return None

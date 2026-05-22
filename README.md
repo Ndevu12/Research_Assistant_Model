@@ -1,332 +1,484 @@
 # AI Research Assistant
 
-A local-first AI research assistant that automatically retrieves academic papers from OpenAlex and Semantic Scholar, then analyzes them using Llama 3.2 via Ollama. Built with Python 3.13, pydantic-ai, and async/await for efficient paper retrieval and analysis.
+A local-first research pipeline that retrieves academic papers from multiple scholarly APIs, ranks and clusters them with embeddings, synthesizes cross-paper insights, and exports reports in several formats. Uses **Ollama** by default for fully local LLM inference, with optional **OpenAI** and **Anthropic** providers.
+
+Built with Python 3.13, pydantic-ai, sentence-transformers, and async I/O.
 
 ## Features
 
-- **Local-first**: Runs entirely on your machine using Ollama + Llama 3.2:3b
-- **Dual-source retrieval**: Searches both OpenAlex and Semantic Scholar APIs in parallel
-- **Smart deduplication**: Removes duplicate papers based on DOI and normalized title matching
-- **Structured output**: Returns research reports in a consistent JSON schema using Pydantic models
-- **Auto-setup**: Automatically installs dependencies and configures Ollama
-- **Async architecture**: Fast concurrent API calls using aiohttp
-- **Modular design**: Clean separation of retrieval, analysis, and utility modules
+- **Multi-stage pipeline** — query understanding → expansion → retrieval → deduplication → ranking → clustering → synthesis → gap analysis → citation export → report generation
+- **Local-first LLM** — Ollama with resource-aware model auto-selection (`llama3.1:8b` or `llama3.2:3b`)
+- **Cloud LLM support** — OpenAI and Anthropic via `src/models/` provider abstraction
+- **Multi-source retrieval** — OpenAlex, Semantic Scholar (arXiv, CrossRef, and others configurable)
+- **Embedding-backed stages** — sentence-transformers (`bge-small-en-v1.5`) for dedup, ranking, and clustering
+- **Structured output** — Pydantic models throughout; JSON, Markdown, HTML, and print-ready PDF (HTML)
+- **Citation export** — BibTeX, APA, MLA, Chicago
+- **Session memory** — optional SQLite-backed interactive sessions
+- **Auto-setup** — installs dependencies, Ollama, and pulls the configured local model on first run
 
 ## Requirements
 
 - Python 3.13+
-- ~4GB RAM for the Llama 3.2:3b model
-- Internet connection (for initial setup and API calls)
-- Pipenv for dependency management
+- [Pipenv](https://pipenv.pypa.io/) for dependency management
+- Internet connection (API retrieval; optional for fully offline LLM after model download)
+
+**Local LLM RAM (approximate):**
+
+| Model | RAM | Disk |
+|-------|-----|------|
+| `llama3.2:3b` | 4–6 GB | ~2.5 GB |
+| `llama3.1:8b` | 8–10 GB | ~5 GB |
+
+Cloud providers require only an API key — no Ollama install.
+
+## Quick Start
+
+```bash
+pip install pipenv
+pipenv install
+cp .env.example .env          # optional; edit as needed
+pipenv run python -m src "transformer attention mechanisms"
+```
+
+On first run with the default Ollama provider, the assistant will:
+
+1. Check Python and embedding dependencies
+2. Install or start Ollama if needed
+3. Resolve your target model (`auto`, env override, or config)
+4. Pull the model if it is not already installed
+5. Run the research pipeline
+
+Use **Pipenv** for all commands (`pipenv run python -m src`). Running plain `python -m src` may miss dependencies such as `sentence-transformers`.
+
+## Usage
+
+### Command line
+
+```bash
+# Interactive mode
+pipenv run python -m src
+
+# Single query (markdown output)
+pipenv run python -m src "your research query"
+
+# HTML report saved to file
+pipenv run python -m src --format html -o reports/report.html "your query"
+
+# Print-ready PDF (HTML — open in browser → Print → Save as PDF)
+pipenv run python -m src --format pdf -o reports/report.pdf.html "your query"
+
+# JSON output with citation exports
+pipenv run python -m src --format json --export bibtex,apa "your query"
+
+# Session memory in batch mode
+pipenv run python -m src --session "your query"
+```
+
+### Setup & health check
+
+```bash
+pipenv run python -m setups.health_check
+pipenv run python -m setups.manager                  # auto-select model
+pipenv run python -m setups.manager --model llama3.1:8b
+```
+
+See [setups/README.md](setups/README.md) for setup details.
+
+## Configuration
+
+Configuration is layered (highest precedence first):
+
+1. Environment variables (`RA_*` prefix, nested with `__`)
+2. Project `.env` file
+3. YAML files in `config/` (`default.yaml`, `models.yaml`, `ranking.yaml`, `providers.yaml`)
+4. Code defaults
+
+Copy `.env.example` to `.env` to get started.
+
+### Environment variables
+
+#### Retrieval APIs
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `S2_API_KEY` | No | Semantic Scholar API key (higher rate limits) |
+| `RA_CROSSREF_MAILTO` | If CrossRef enabled | Email for CrossRef polite pool |
+| `CROSSREF_MAILTO` | If CrossRef enabled | Alias for CrossRef mailto |
+
+#### LLM — shared settings
+
+All providers use the `RA_LLM__*` namespace. API keys can also be set via provider-specific env vars (see below) or the unified `RA_LLM__API_KEY`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RA_LLM__PROVIDER` | `ollama` | `ollama`, `openai`, or `anthropic` |
+| `RA_LLM__MODEL` | `auto` | Model name, or `auto` for resource-based selection (Ollama only) |
+| `RA_LLM__BASE_URL` | provider-specific | API base URL |
+| `RA_LLM__API_KEY` | — | Unified API key override for any provider |
+| `RA_LLM__TEMPERATURE` | `0.2` | Sampling temperature |
+| `RA_LLM__TIMEOUT_SECONDS` | `120` | Request timeout |
+
+#### LLM — Ollama (default)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RA_LLM__PROVIDER` | `ollama` | Use local Ollama server |
+| `RA_LLM__MODEL` | `auto` | `auto`, `llama3.1:8b`, `llama3.2:3b`, etc. (see `config/ollama_models.yaml`) |
+| `RA_LLM__BASE_URL` | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
+| `RA_LLM__API_KEY` | `ollama` | Placeholder key (Ollama ignores it) |
+| `OLLAMA_API_KEY` | — | Alternative to `RA_LLM__API_KEY` |
+
+**Model selection:** Set `RA_LLM__MODEL=auto` to pick the best model for your RAM/disk. Override with a specific model name in `.env` (e.g. `RA_LLM__MODEL=llama3.1:8b`). Supported models are listed in `config/ollama_models.yaml`. Setup pulls missing models automatically on startup.
+
+#### LLM — OpenAI
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `RA_LLM__PROVIDER` | Yes | Set to `openai` |
+| `RA_LLM__MODEL` | Yes | e.g. `gpt-4o-mini` |
+| `OPENAI_API_KEY` | Yes* | OpenAI API key |
+| `RA_LLM__API_KEY` | Yes* | Alternative unified key |
+| `RA_LLM__BASE_URL` | No | Custom endpoint (defaults to `https://api.openai.com/v1`; use for LM Studio and other OpenAI-compatible servers) |
+
+\* One of `OPENAI_API_KEY` or `RA_LLM__API_KEY` is required.
+
+```bash
+RA_LLM__PROVIDER=openai
+RA_LLM__MODEL=gpt-4o-mini
+OPENAI_API_KEY=sk-...
+RA_SYNTHESIS__LLM_ENABLED=true
+```
+
+#### LLM — Anthropic
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `RA_LLM__PROVIDER` | Yes | Set to `anthropic` |
+| `RA_LLM__MODEL` | Yes | e.g. `claude-3-5-haiku-latest` |
+| `ANTHROPIC_API_KEY` | Yes* | Anthropic API key |
+| `RA_LLM__API_KEY` | Yes* | Alternative unified key |
+| `RA_LLM__BASE_URL` | No | Custom Anthropic-compatible endpoint |
+
+\* One of `ANTHROPIC_API_KEY` or `RA_LLM__API_KEY` is required.
+
+```bash
+RA_LLM__PROVIDER=anthropic
+RA_LLM__MODEL=claude-3-5-haiku-latest
+ANTHROPIC_API_KEY=sk-ant-...
+RA_SYNTHESIS__LLM_ENABLED=true
+```
+
+#### Pipeline & synthesis
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RA_SYNTHESIS__LLM_ENABLED` | `false` | Enable LLM-based synthesis (recommended for 8B+ local or cloud models) |
+| `RA_RANKING__TOP_K` | `25` | Papers kept after ranking |
+| `RA_PIPELINE__DEBUG` | `false` | Verbose pipeline logging |
+| `RA_DEBUG` | — | Alias for debug mode (`1`, `true`, `yes`) |
+| `RA_CONFIG_DIR` | — | Override path to `config/` directory |
+
+Provider implementations live in `src/models/` (`ollama.py`, `openai.py`, `anthropic.py`). Each resolves API keys via `RA_LLM__API_KEY` first, then the provider-specific env var.
 
 ## Project Structure
 
 ```
 Research_Assistant_Model/
-├── src/                  # Source code package
-│   ├── __init__.py       # Package initialization
-│   ├── __main__.py       # Entry point (enables `python -m src`)
-│   ├── retrieval/        # Paper retrieval logic
-│   │   ├── __init__.py
-│   │   ├── openalex.py   # OpenAlex API client
-│   │   ├── semanticscholar.py  # Semantic Scholar API client
-│   │   ├── models.py     # Data schemas (PaperAnalysis, ResearchReport, RetrievedPaper)
-│   │   ├── rendering.py  # Output formatting functions
-│   │   ├── helpers.py    # Helper functions (_normalize_title, _dedupe, etc.)
-│   │   └── orchestrator.py  # Main research workflow orchestration
-│   ├── analysis/         # LLM analysis logic
-│   │   ├── __init__.py
-│   │   └── llm.py        # LLM agent configuration and analysis logic
-│   └── utils/            # Utility modules and logging
-│       ├── __init__.py
-│       ├── logging_system.py    # Structured logging
-│       ├── message_formatter.py # Output formatting
-│       ├── response_models.py   # Data models
-│       └── ... (other utilities)
-├── setups/               # Setup and configuration scripts
-│   ├── __init__.py       # Package exports
-│   ├── setup.py          # Python dependency installation
-│   ├── ollama.py         # Ollama installation and model setup
-│   ├── manager.py        # Main setup orchestrator
-│   ├── health_check.py   # Setup validation
-│   └── README.md         # Setup documentation
-├── notebooks/            # Jupyter notebooks
-├── tests/                # Unit and integration tests
-├── data/                 # Data storage (ignored in git)
-├── docs/                 # Documentation
-├── Pipfile               # Pipenv dependencies
-├── Pipfile.lock          # Pipenv lock file (generated)
-├── pyproject.toml        # Build configuration
-├── .env                  # Environment variables (ignored in git)
-├── .gitignore
+├── config/                     # YAML configuration (merged at runtime)
+│   ├── default.yaml            # Base settings
+│   ├── models.yaml             # LLM provider overrides
+│   ├── ollama_models.yaml      # Supported local models + RAM/disk requirements
+│   ├── ranking.yaml            # Ranking weights and top-k
+│   └── providers.yaml          # Retrieval provider toggles
+│
+├── src/                        # Application source
+│   ├── __main__.py             # CLI entry point (`python -m src`)
+│   ├── config/                 # AppSettings, model auto-selection
+│   ├── core/                   # Pipeline engine, stage recovery, metrics
+│   ├── retrieval/              # API clients, providers, deduplication
+│   │   ├── providers/          # OpenAlex, Semantic Scholar, arXiv, …
+│   │   ├── orchestrator.py     # Pipeline facade
+│   │   └── models.py           # RetrievedPaper, ResearchReport, …
+│   ├── research/               # Query expansion, ranking, clustering
+│   ├── analysis/               # Synthesis, gap analysis
+│   ├── embeddings/             # sentence-transformers + disk cache
+│   ├── models/                 # LLM providers
+│   │   ├── ollama.py           # Local Ollama (default)
+│   │   ├── openai.py           # OpenAI / compatible endpoints
+│   │   ├── anthropic.py        # Anthropic Claude
+│   │   └── factory.py          # AgentFactory + provider registry
+│   ├── reporting/              # Markdown, HTML, JSON renderers
+│   ├── export/                 # BibTeX, APA, MLA, Chicago
+│   ├── memory/                 # SQLite session store
+│   └── utils/                  # Logging, retry, response handling
+│
+├── setups/                     # Install & health-check scripts
+│   ├── manager.py              # Full setup orchestrator
+│   ├── ollama.py               # Ollama install + model pull
+│   └── health_check.py         # Validate deps, Ollama, model
+│
+├── tests/                      # Unit and integration tests
+├── reports/                    # Generated reports (gitignored)
+├── data/                       # Embeddings cache, SQLite DB (gitignored)
+├── logs/                       # Structured logs (gitignored)
+├── .env                        # Local secrets (gitignored; see .env.example)
+├── Pipfile / Pipfile.lock
 └── README.md
 ```
 
-## Installation
+## Architecture
 
-### Quick Start (Recommended - Fully Automatic)
+### End-to-end pipeline
 
-```bash
-# Install pipenv if not already installed
-pip install pipenv
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              User Query / CLI                               │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         QUERY UNDERSTANDING & EXPANSION                     │
+│   Parse intent · generate search variants · optional LLM query expansion    │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PARALLEL PAPER RETRIEVAL                            │
+│  ┌────────────┐  ┌──────────────────┐  ┌─────────┐  ┌──────────┐            │
+│  │  OpenAlex  │  │ Semantic Scholar │  │  arXiv  │  │ CrossRef │  …         │
+│  └────────────┘  └──────────────────┘  └─────────┘  └──────────┘            │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              EMBEDDING-BACKED PROCESSING  (bge-small-en-v1.5)               │
+│   Deduplication  →  Ranking  →  Relevance Scoring  →  Clustering            │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ANALYSIS LAYER                                 │
+│   Synthesis (heuristic or LLM)  →  Gap Analysis  →  Citation Export         │
+└───────────────────────────────────┬─────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            REPORT GENERATION                                │
+│         Markdown  ·  JSON  ·  HTML  ·  PDF-ready HTML  ·  BibTeX/APA/…      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-# Install Python dependencies
-pipenv install
+### LLM provider layer
 
-# Run the assistant (auto-setup runs automatically on first execution)
+The analysis stages call one backend selected via `RA_LLM__PROVIDER`:
+
+```
+                    ┌──────────────────────────────────────┐
+                    │         src/models/ (factory)        │
+                    │   AgentFactory · pydantic-ai agents  │
+                    └───────────────────┬──────────────────┘
+                                        │
+              ┌─────────────────────────┼─────────────────────────┐
+              │                         │                         │
+              ▼                         ▼                         ▼
+   ┌────────────────────┐   ┌────────────────────┐   ┌────────────────────┐
+   │      Ollama        │   │      OpenAI        │   │     Anthropic      │
+   │  (local default)   │   │  gpt-4o-mini, …    │   │  claude-3-5-…      │
+   │                    │   │                    │   │                    │
+   │ RA_LLM__MODEL=auto │   │ OPENAI_API_KEY     │   │ ANTHROPIC_API_KEY  │
+   │ ollama_models.yaml │   │ RA_LLM__API_KEY    │   │ RA_LLM__API_KEY    │
+   └────────────────────┘   └────────────────────┘   └────────────────────┘
+```
+
+### First-run setup (Ollama)
+
+When `RA_LLM__PROVIDER=ollama`, startup runs this automatically if anything is missing:
+
+```
 pipenv run python -m src
+        │
+        ▼
+┌───────────────────┐     no      ┌────────────────────────────┐
+│ Ollama installed? │────────────►│ Install Ollama (setups/)   │
+└─────────┬─────────┘             └─────────────┬──────────────┘
+          │ yes                                 │
+          ▼                                     ▼
+┌───────────────────┐     no      ┌────────────────────────────┐
+│  Ollama running?  │────────────►│ Start ollama serve         │
+└─────────┬─────────┘             └─────────────┬──────────────┘
+          │ yes                                 │
+          ▼                                     ▼
+┌───────────────────┐     no      ┌────────────────────────────┐
+│  Model installed? │────────────►│ ollama pull <resolved>     │
+│  (from .env/auto) │             │ e.g. llama3.1:8b / 3b      │
+└─────────┬─────────┘             └─────────────┬──────────────┘
+          │ yes                                 │
+          └─────────────────┬───────────────────┘
+                            ▼
+                   Run research pipeline
 ```
 
-The first run will automatically:
-1. ✅ Check if Ollama is installed
-2. ✅ Install Ollama if needed (Arch/Ubuntu/macOS supported)
-3. ✅ Start Ollama server if not running
-4. ✅ Pull the `llama3.2:3b` model (~2GB download)
-5. ✅ Start the research assistant
+Cloud providers (`openai`, `anthropic`) skip Ollama setup and use API keys directly.
 
-**Note:** Initial setup may take several minutes depending on your internet connection and system performance.
+<details>
+<summary>Detailed pipeline flow (Mermaid — renders on GitHub)</summary>
 
-### Manual Setup (Optional)
+```mermaid
+flowchart TD
+    Q[User Query] --> QU[Query Understanding]
+    QU --> QE[Query Expansion]
+    QE --> R[Parallel Retrieval]
+    R --> OA[OpenAlex]
+    R --> SS[Semantic Scholar]
+    R --> AX[arXiv / CrossRef / …]
+    OA --> DEDUP[Deduplication]
+    SS --> DEDUP
+    AX --> DEDUP
+    DEDUP --> RANK[Ranking]
+    RANK --> REL[Relevance Scoring]
+    REL --> CLU[Clustering]
+    CLU --> SYN[Synthesis]
+    SYN --> GAP[Gap Analysis]
+    GAP --> CIT[Citation Export]
+    CIT --> REP[Report Generation]
+    REP --> MD[Markdown]
+    REP --> JSON[JSON]
+    REP --> HTML[HTML / PDF-ready]
 
-If you prefer to set up components manually or troubleshoot:
+    subgraph LLM["LLM backend (RA_LLM__PROVIDER)"]
+        OLL[Ollama]
+        OAI[OpenAI]
+        ANT[Anthropic]
+    end
 
-```bash
-# Check setup status
-python -m setups.health_check
-
-# Run setup explicitly
-python -m setups.manager
-
-# Run setup with custom model
-python -m setups.manager --model mistral
+    QE -.-> LLM
+    SYN -.-> LLM
+    GAP -.-> LLM
 ```
 
-## Usage
+</details>
 
-### Command Line
+### Configuration precedence
 
-Run with default query:
-```bash
-pipenv run python -m src
 ```
+  Highest ───────────────────────────────────────────────► Lowest
 
-Run with custom query:
-```bash
-pipenv run python -m src "Your research query here"
-```
-
-Show help:
-```bash
-pipenv run python -m src --help
-```
-
-### As a Python Module
-
-```python
-from src.retrieval.orchestrator import run_research_helper
-import asyncio
-
-async def main():
-    await run_research_helper("On-device LLM reasoning for IoT DDoS detection")
-
-asyncio.run(main())
-```
-
-### Environment Variables
-
-Create a `.env` file (optional):
-```bash
-# Semantic Scholar API key (optional, increases rate limits)
-S2_API_KEY=your_api_key_here
+  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+  │  RA_* env   │ → │   .env      │ → │ config/*.yaml│ → │   defaults  │
+  │  (shell)    │   │   file      │   │  (merged)    │   │  (in code)  │
+  └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
 ```
 
 ## Output Format
 
-The assistant returns a markdown-formatted research report with:
-- Query summary
-- Top 10 relevant papers (deduplicated)
-- For each paper:
-  - Title, year, and venue
-  - Source URL or DOI
-  - Key points extracted by the LLM
-  - Relevance explanation
+Reports include query summary, ranked papers, synthesis themes, gap analysis, and citations.
 
-Example output:
+**Example (markdown excerpt):**
+
 ```markdown
-# Research helper results
-Query: On-device LLM reasoning for IoT DDoS detection
+# Research Report: transformer attention mechanisms
 
-## 1. Lightweight LLM Architecture for Edge Devices
-2024 | IEEE IoT Journal
-Source: https://doi.org/10.xxxx/xxxxx
+## Executive Summary
+Cross-paper synthesis highlights scaled dot-product attention, multi-head variants,
+and efficiency techniques for long-context models.
 
-Key points:
-- Novel quantization technique reduces model size by 75%
-- Edge-based inference with <100ms latency
-- Achieves 95% accuracy on DDoS detection benchmarks
+## Thematic Clusters
 
-Why this matches your query:
-- Directly addresses on-device LLM deployment
-- Focuses on IoT security and DDoS detection
-- Published in top-tier IoT venue
+### 1. Core Attention Architectures
+2023 | NeurIPS
+DOI: https://doi.org/10.xxxx/xxxxx
+
+Key findings:
+- Multi-head attention improves representational capacity
+- FlashAttention reduces memory bandwidth bottlenecks
+
+## Research Gaps
+- Limited benchmarks on edge-device deployment
+- Under-explored sparse attention for retrieval-augmented pipelines
 ```
 
-## Troubleshooting
+**Export formats:**
 
-### Setup fails on first run
-The automatic setup handles most cases, but if it fails:
+| `--format` | Output |
+|------------|--------|
+| `markdown` | Terminal / stdout (default) |
+| `json` | Structured `EnhancedResearchReport` JSON |
+| `html` | Styled HTML report |
+| `pdf` | Print-ready HTML (open → Print → Save as PDF) |
+
+Use `--export bibtex,apa,mla,chicago` alongside any format for citation files.
+
+
+### Setup / Ollama
 
 ```bash
-# Check setup status
-python -m setups.health_check
-
-# Run setup manually
-python -m setups.manager
-
-# Run setup with verbose logging
-python -m setups.manager --model llama3.2:3b
+pipenv run python -m setups.health_check
+pipenv run python -m setups.manager
 ```
 
-### Ollama not found
-If automatic setup fails to install Ollama, install it manually:
-- Arch Linux: `yay -S ollama` or `sudo pacman -S ollama`
-- Ubuntu/Debian: `curl -fsSL https://ollama.com/install.sh | sh`
-- macOS: `brew install ollama`
-- Windows: Download from https://ollama.com/download
+- **Model not installed** — startup auto-pulls the resolved model; or run `ollama pull <model>` manually
+- **Wrong model** — set `RA_LLM__MODEL` in `.env` or use `--model` with setup
+- **Ollama not running** — `ollama serve` or re-run setup
 
-Then run setup again:
+### Cloud providers
+
+- Set `RA_LLM__PROVIDER` to `openai` or `anthropic` and provide the API key
+- Ollama setup is skipped automatically for non-Ollama providers
+- Enable `RA_SYNTHESIS__LLM_ENABLED=true` for LLM-based synthesis
+
+### Missing embeddings / import errors
+
+Always use Pipenv:
+
 ```bash
-python -m setups.manager
+pipenv install
+pipenv run python -m src
 ```
 
-### Model not available
-If the model fails to pull during setup:
+### Logs
+
 ```bash
-# Pull manually
-ollama pull llama3.2:3b
-
-# Or run setup again
-python -m setups.manager
-```
-
-### Ollama server not running
-The automatic setup starts the server, but if it stops:
-```bash
-# Start manually
-ollama serve
-
-# Or run setup again
-python -m setups.manager
-```
-
-### Connection errors
-- Check your internet connection
-- Verify Ollama is running: `ollama list`
-- Check logs: `tail -f logs/combined_*.log`
-
-### Pipenv issues
-If pipenv is not found, install it first:
-```bash
-pip install pipenv
-```
-
-To activate the virtual environment manually:
-```bash
-pipenv shell
-```
-
-### Import errors
-If you encounter import errors:
-- Ensure you're using `pipenv run` to run commands
-- Verify the new structure is in place: `ls src/`
-- Run setup again: `python -m setups.manager`
-
-## Architecture
-
-The assistant follows a modular pipeline architecture:
-
-```
-┌─────────────────┐
-│   User Query    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Parallel Paper Retrieval       │
-│  ┌──────────┐  ┌──────────────┐ │
-│  │ OpenAlex │  │   Semantic   │ │
-│  │   API    │  │  Scholar API │ │
-│  └──────────┘  └──────────────┘ │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Deduplication & Ranking        │
-│  (DOI + Title Normalization)    │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  LLM Analysis                   │
-│  (Llama 3.2:3b via Ollama)      │
-└────────┬────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Markdown Report Generation     │
-└─────────────────────────────────┘
+tail -f logs/combined_*.log
 ```
 
 ## Development
 
-### Import Paths
+### Running locally
+
+```bash
+pipenv install --dev
+pipenv run pytest
+pipenv shell
+python -m src
+```
+
+### Import paths
 
 **Within the package (relative imports):**
+
 ```python
 # In src/retrieval/openalex.py
 from .models import RetrievedPaper
-from .helpers import _normalize_title
 
-# In src/analysis/llm.py
-from ..retrieval.models import PaperAnalysis
-
-# In src/__main__.py
-from .retrieval.openalex import search_openalex
-from .retrieval.semanticscholar import search_semantic_scholar
-from .analysis.llm import analysis_agent
+# In src/analysis/synthesis.py
+from ..models import AgentFactory, AgentRole
+from ..retrieval.models import RankedPaper
 ```
 
 **From external scripts (absolute imports):**
+
 ```python
-from src.retrieval.openalex import search_openalex
-from src.retrieval.semanticscholar import search_semantic_scholar
-from src.analysis.llm import analysis_agent
+from src.retrieval.orchestrator import run_research_helper
+from src.models import AgentFactory, create_llm_provider
 from setups import run_setup, print_report
 ```
 
-### Dependencies
+### Core dependencies
 
-Core dependencies (managed via Pipenv):
-- `pydantic-ai` - LLM agent framework with structured outputs
-- `aiohttp` - Async HTTP client for API calls
-- `pydantic` - Data validation and schema definition
-
-### Running in Development
-
-```bash
-# Activate virtual environment
-pipenv shell
-
-# Run the assistant
-python -m src
-
-# Run setup script
-python -m setups.manager
-
-# Exit virtual environment
-exit
-```
-
-## License
-
-MIT
+| Package | Role |
+|---------|------|
+| `pydantic-ai` | LLM agents with structured outputs |
+| `aiohttp` | Async HTTP for scholarly APIs |
+| `sentence-transformers` | Embeddings for dedup, ranking, clustering |
+| `pydantic` / `pydantic-settings` | Schemas and configuration |
+| `hdbscan` | Thematic paper clustering |

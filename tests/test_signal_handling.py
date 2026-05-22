@@ -84,8 +84,8 @@ class TestSignalHandling:
                 with patch('sys.stdout', captured_output):
                     run_interactive_mode()
                 
-                # Verify one query was processed before interrupt
-                assert mock_run.call_count == 1
+                # Verify one query was processed before interrupt (1 init + 1 query)
+                assert mock_run.call_count == 2
             
             output = captured_output.getvalue()
             
@@ -292,8 +292,8 @@ class TestSignalHandlingIntegration:
                 with patch('sys.stdout', captured_output):
                     run_interactive_mode()
                 
-                # Verify the successful query was processed
-                assert mock_run.call_count == 1
+                # Verify the successful query was processed (1 init + 1 query)
+                assert mock_run.call_count == 2
             
             output = captured_output.getvalue()
             

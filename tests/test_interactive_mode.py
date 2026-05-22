@@ -6,12 +6,25 @@ multi-query sessions, exit command handling, and empty input re-prompting.
 """
 
 import sys
+from contextlib import contextmanager
 from io import StringIO
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import AsyncMock, patch, MagicMock, call
 
 import pytest
 
 from src.__main__ import run_interactive_mode
+
+
+@contextmanager
+def _mock_session_async(research_output: str = "mock report"):
+    """Mock interactive session async helpers while keeping real asyncio.run."""
+    with patch("src.__main__._initialize_session", new=AsyncMock()) as init_mock:
+        with patch("src.__main__._handle_follow_up", new=AsyncMock(return_value=None)) as follow_mock:
+            with patch(
+                "src.__main__._run_session_query",
+                new=AsyncMock(return_value=research_output),
+            ) as query_mock:
+                yield init_mock, follow_mock, query_mock
 
 
 def test_run_interactive_mode_displays_welcome_message():
@@ -50,23 +63,16 @@ def test_run_interactive_mode_displays_farewell_message():
 
 def test_run_interactive_mode_processes_query_and_continues():
     """Test that interactive mode processes a query and prompts for another."""
-    # Mock get_user_query to return a query, then None (exit)
     mock_queries = ["test query", None]
-    
-    with patch('src.__main__.get_user_query', side_effect=mock_queries):
-        # Mock run_research_helper to avoid actual API calls
-        with patch('src.__main__.asyncio.run') as mock_run:
-            # Capture stdout
+
+    with patch("src.__main__.get_user_query", side_effect=mock_queries):
+        with _mock_session_async() as (_, _, query_mock):
             captured_output = StringIO()
-            with patch('sys.stdout', captured_output):
+            with patch("sys.stdout", captured_output):
                 run_interactive_mode()
-            
-            # Verify run_research_helper was called with the query
-            mock_run.assert_called_once()
-            
+
+            query_mock.assert_called_once()
             output = captured_output.getvalue()
-            
-            # Verify separator is displayed
             assert "-" * 60 in output
 
 
@@ -91,23 +97,16 @@ def test_run_interactive_mode_handles_keyboard_interrupt():
 
 def test_run_interactive_mode_processes_multiple_queries():
     """Test that interactive mode can process multiple queries in sequence."""
-    # Mock get_user_query to return multiple queries, then None (exit)
     mock_queries = ["query 1", "query 2", "query 3", None]
-    
-    with patch('src.__main__.get_user_query', side_effect=mock_queries):
-        # Mock run_research_helper to avoid actual API calls
-        with patch('src.__main__.asyncio.run') as mock_run:
-            # Capture stdout
+
+    with patch("src.__main__.get_user_query", side_effect=mock_queries):
+        with _mock_session_async() as (_, _, query_mock):
             captured_output = StringIO()
-            with patch('sys.stdout', captured_output):
+            with patch("sys.stdout", captured_output):
                 run_interactive_mode()
-            
-            # Verify run_research_helper was called 3 times
-            assert mock_run.call_count == 3
-            
+
+            assert query_mock.call_count == 3
             output = captured_output.getvalue()
-            
-            # Verify separators are displayed (should be 3 separators for 3 queries)
             assert output.count("-" * 60) == 3
 
 
@@ -127,32 +126,17 @@ class TestInteractiveModeIntegration:
             None  # Exit
         ]
         
-        with patch('src.__main__.get_user_query', side_effect=mock_queries):
-            # Mock the research helper to avoid API calls
-            with patch('src.__main__.asyncio.run') as mock_research:
-                # Capture all output
+        with patch("src.__main__.get_user_query", side_effect=mock_queries):
+            with _mock_session_async() as (_, _, query_mock):
                 captured_output = StringIO()
-                with patch('sys.stdout', captured_output):
+                with patch("sys.stdout", captured_output):
                     run_interactive_mode()
-                
-                # Verify each query was processed independently
-                assert mock_research.call_count == 3
-                
-                # Verify the research helper was called with correct queries
-                call_args_list = mock_research.call_args_list
-                # Note: asyncio.run is called with run_research_helper(query), 
-                # so we need to check the function being called
-                
+
+                assert query_mock.call_count == 3
+
                 output = captured_output.getvalue()
-                
-                # Verify welcome message is displayed
                 assert "Welcome to the AI Research Assistant!" in output
-                
-                # Verify separators between results (3 queries = 3 separators)
-                separator_count = output.count("-" * 60)
-                assert separator_count == 3
-                
-                # Verify farewell message
+                assert output.count("-" * 60) == 3
                 assert "Thank you for using the AI Research Assistant. Goodbye!" in output
     
     def test_exit_command_handling_exit(self):
@@ -161,22 +145,17 @@ class TestInteractiveModeIntegration:
         Requirements: 3.1, 3.4
         """
         # Mock get_user_query to return 'exit' immediately
-        with patch('src.__main__.get_user_query', return_value=None) as mock_input:
-            with patch('src.__main__.asyncio.run') as mock_research:
+        with patch("src.__main__.get_user_query", return_value=None):
+            with _mock_session_async() as (_, _, query_mock):
                 captured_output = StringIO()
-                with patch('sys.stdout', captured_output):
+                with patch("sys.stdout", captured_output):
                     run_interactive_mode()
-                
-                # Verify no research queries were processed
-                mock_research.assert_not_called()
-                
+
+                query_mock.assert_not_called()
+
                 output = captured_output.getvalue()
-                
-                # Verify welcome and farewell messages
                 assert "Welcome to the AI Research Assistant!" in output
                 assert "Thank you for using the AI Research Assistant. Goodbye!" in output
-                
-                # Verify no separators (no queries processed)
                 assert "-" * 60 not in output
     
     def test_exit_command_handling_after_queries(self):
@@ -191,22 +170,17 @@ class TestInteractiveModeIntegration:
             None  # Exit
         ]
         
-        with patch('src.__main__.get_user_query', side_effect=mock_queries):
-            with patch('src.__main__.asyncio.run') as mock_research:
+        with patch("src.__main__.get_user_query", side_effect=mock_queries):
+            with _mock_session_async() as (_, _, query_mock):
                 captured_output = StringIO()
-                with patch('sys.stdout', captured_output):
+                with patch("sys.stdout", captured_output):
                     run_interactive_mode()
-                
-                # Verify 2 queries were processed
-                assert mock_research.call_count == 2
-                
+
+                assert query_mock.call_count == 2
+
                 output = captured_output.getvalue()
-                
-                # Verify session flow
                 assert "Welcome to the AI Research Assistant!" in output
                 assert "Thank you for using the AI Research Assistant. Goodbye!" in output
-                
-                # Verify 2 separators for 2 queries
                 assert output.count("-" * 60) == 2
     
     def test_empty_input_re_prompting_integration(self):
@@ -223,21 +197,18 @@ class TestInteractiveModeIntegration:
         ]
         
         # Mock get_user_query to simulate internal empty input handling
-        with patch('src.__main__.get_user_query', side_effect=mock_queries):
-            with patch('src.__main__.asyncio.run') as mock_research:
+        with patch("src.__main__.get_user_query", side_effect=mock_queries):
+            with _mock_session_async() as (_, _, query_mock):
                 captured_output = StringIO()
-                with patch('sys.stdout', captured_output):
+                with patch("sys.stdout", captured_output):
                     run_interactive_mode()
-                
-                # Verify the valid query was processed
-                assert mock_research.call_count == 1
-                
+
+                assert query_mock.call_count == 1
+
                 output = captured_output.getvalue()
-                
-                # Verify normal session flow
                 assert "Welcome to the AI Research Assistant!" in output
                 assert "Thank you for using the AI Research Assistant. Goodbye!" in output
-                assert "-" * 60 in output  # One separator for one query
+                assert "-" * 60 in output
     
     def test_keyboard_interrupt_during_session(self):
         """Test Ctrl+C handling during an active session.
@@ -245,24 +216,17 @@ class TestInteractiveModeIntegration:
         Requirements: 3.3, 3.4, 3.5
         """
         # Simulate KeyboardInterrupt during get_user_query
-        with patch('src.__main__.get_user_query', side_effect=KeyboardInterrupt):
-            with patch('src.__main__.asyncio.run') as mock_research:
+        with patch("src.__main__.get_user_query", side_effect=KeyboardInterrupt):
+            with _mock_session_async() as (_, _, query_mock):
                 captured_output = StringIO()
-                with patch('sys.stdout', captured_output):
+                with patch("sys.stdout", captured_output):
                     run_interactive_mode()
-                
-                # Verify no queries were processed
-                mock_research.assert_not_called()
-                
+
+                query_mock.assert_not_called()
+
                 output = captured_output.getvalue()
-                
-                # Verify welcome message was displayed
                 assert "Welcome to the AI Research Assistant!" in output
-                
-                # Verify farewell message is displayed even after interrupt
                 assert "Thank you for using the AI Research Assistant. Goodbye!" in output
-                
-                # Verify no error messages or stack traces
                 assert "Traceback" not in output
                 assert "Error" not in output or "Error fetching papers" in output
     
@@ -277,23 +241,18 @@ class TestInteractiveModeIntegration:
             KeyboardInterrupt()  # Interrupt on second prompt
         ]
         
-        with patch('src.__main__.get_user_query', side_effect=mock_queries):
-            with patch('src.__main__.asyncio.run') as mock_research:
+        with patch("src.__main__.get_user_query", side_effect=mock_queries):
+            with _mock_session_async() as (_, _, query_mock):
                 captured_output = StringIO()
-                with patch('sys.stdout', captured_output):
+                with patch("sys.stdout", captured_output):
                     run_interactive_mode()
-                
-                # Verify one query was processed before interrupt
-                assert mock_research.call_count == 1
-                
+
+                assert query_mock.call_count == 1
+
                 output = captured_output.getvalue()
-                
-                # Verify session components
                 assert "Welcome to the AI Research Assistant!" in output
                 assert "Thank you for using the AI Research Assistant. Goodbye!" in output
-                assert "-" * 60 in output  # One separator for processed query
-                
-                # Verify graceful handling (no stack trace)
+                assert "-" * 60 in output
                 assert "Traceback" not in output
     
     def test_session_maintains_state_across_queries(self):
@@ -310,24 +269,17 @@ class TestInteractiveModeIntegration:
             None  # Exit
         ]
         
-        with patch('src.__main__.get_user_query', side_effect=mock_queries):
-            with patch('src.__main__.asyncio.run') as mock_research:
+        with patch("src.__main__.get_user_query", side_effect=mock_queries):
+            with _mock_session_async() as (_, _, query_mock):
                 captured_output = StringIO()
-                with patch('sys.stdout', captured_output):
+                with patch("sys.stdout", captured_output):
                     run_interactive_mode()
-                
-                # Verify all 4 queries were processed in the same session
-                assert mock_research.call_count == 4
-                
+
+                assert query_mock.call_count == 4
+
                 output = captured_output.getvalue()
-                
-                # Verify single welcome and farewell (one session)
-                welcome_count = output.count("Welcome to the AI Research Assistant!")
-                farewell_count = output.count("Thank you for using the AI Research Assistant. Goodbye!")
-                assert welcome_count == 1
-                assert farewell_count == 1
-                
-                # Verify 4 separators for 4 queries
+                assert output.count("Welcome to the AI Research Assistant!") == 1
+                assert output.count("Thank you for using the AI Research Assistant. Goodbye!") == 1
                 assert output.count("-" * 60) == 4
     
     def test_integration_with_input_handler_empty_input_flow(self):
@@ -347,21 +299,15 @@ class TestInteractiveModeIntegration:
             "exit"  # Exit command
         ]
         
-        with patch('builtins.input', side_effect=mock_inputs):
-            with patch('src.__main__.asyncio.run') as mock_research:
+        with patch("builtins.input", side_effect=mock_inputs):
+            with _mock_session_async() as (_, _, query_mock):
                 captured_output = StringIO()
-                with patch('sys.stdout', captured_output):
+                with patch("sys.stdout", captured_output):
                     run_interactive_mode()
-                
-                # Verify one valid query was processed
-                assert mock_research.call_count == 1
-                
+
+                assert query_mock.call_count == 1
+
                 output = captured_output.getvalue()
-                
-                # Verify normal session completion
                 assert "Welcome to the AI Research Assistant!" in output
                 assert "Thank you for using the AI Research Assistant. Goodbye!" in output
-                
-                # Verify empty input error messages were displayed
-                # (They should be in the captured output since print goes to stdout)
                 assert "Query cannot be empty" in output

@@ -1,0 +1,528 @@
+# -*- coding: utf-8 -*-
+"""Two-pass cross-paper synthesis workflow."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from typing import TYPE_CHECKING
+
+from pydantic_ai import Agent
+
+from ..core.context import PipelineContext, StageResult
+from ..core.paper_adapters import ensure_ranked_papers
+from ..models import AgentFactory, AgentRole, ROLE_SYSTEM_PROMPTS
+from ..retrieval.models import (
+    PaperAnalysis,
+    PaperCluster,
+    PaperExtraction,
+    RankedPaper,
+    SynthesisResult,
+)
+from ..utils.enhanced_response_handler import EnhancedResponseHandler
+from ..utils.logging_system import logger
+from ..utils.response_models import RequestContext, ResponseHandlerConfig, RetryConfig
+
+if TYPE_CHECKING:
+    from ..config.settings import LLMConfig, SynthesisConfig
+
+
+def create_llm_agent(system_prompt: str, llm_config: LLMConfig | None = None) -> Agent:
+    """Create a pydantic-ai agent from application LLM settings."""
+    return AgentFactory(llm_config).create_agent_with_prompt(system_prompt, llm_config)
+
+
+EXTRACTION_SYSTEM_PROMPT = ROLE_SYSTEM_PROMPTS[AgentRole.EXTRACTION]
+SYNTHESIS_SYSTEM_PROMPT = ROLE_SYSTEM_PROMPTS[AgentRole.SYNTHESIS]
+
+
+def _heuristic_extraction(paper: RankedPaper) -> PaperExtraction:
+    """Build a fallback extraction when the LLM pass is unavailable."""
+    abstract = paper.paper.abstract or ""
+    sentences = [part.strip() for part in abstract.split(".") if part.strip()]
+    findings = sentences[:2] if sentences else [f"Discusses {paper.paper.title}."]
+    limitations = sentences[2:3] if len(sentences) > 2 else []
+
+    keywords = paper.paper.keywords or []
+    datasets = [kw for kw in keywords if any(token in kw.lower() for token in ("data", "corpus", "benchmark"))]
+    if not datasets and abstract:
+        datasets = ["Not explicitly stated in abstract"]
+
+    return PaperExtraction(
+        paper_id=paper.paper.paper_id,
+        title=paper.paper.title,
+        methodology=["Details inferred from abstract only"],
+        datasets=datasets,
+        benchmarks=[],
+        limitations=limitations,
+        findings=findings,
+    )
+
+
+def _heuristic_synthesis(
+    query: str,
+    extractions: list[PaperExtraction],
+    clusters: list[PaperCluster],
+) -> SynthesisResult:
+    """Aggregate extractions heuristically when collective synthesis fails."""
+    all_datasets: list[str] = []
+    all_methodologies: list[str] = []
+    all_findings: list[str] = []
+    all_limitations: list[str] = []
+
+    for extraction in extractions:
+        all_datasets.extend(extraction.datasets)
+        all_methodologies.extend(extraction.methodology)
+        all_findings.extend(extraction.findings)
+        all_limitations.extend(extraction.limitations)
+
+    unique_datasets = list(dict.fromkeys(item for item in all_datasets if item))
+    unique_methodologies = list(dict.fromkeys(item for item in all_methodologies if item))
+
+    cluster_themes = [cluster.theme for cluster in clusters if cluster.theme]
+    trends = [
+        f"Research grouped into {len(clusters)} thematic cluster(s): {', '.join(cluster_themes[:3])}."
+    ] if clusters else [f"Literature review for: {query}"]
+
+    gaps = list(dict.fromkeys(all_limitations))[:5]
+    if not gaps:
+        gaps = [f"Limited cross-paper comparison for query: {query}"]
+
+    agreements = all_findings[:3]
+    if len(agreements) < 2 and unique_methodologies:
+        agreements = [f"Shared methodological themes: {', '.join(unique_methodologies[:3])}"]
+
+    return SynthesisResult(
+        agreements=agreements,
+        disagreements=["Full disagreement analysis requires LLM synthesis"],
+        trends=trends,
+        gaps=gaps,
+        datasets=unique_datasets[:10],
+        methodologies=unique_methodologies[:10],
+    )
+
+
+def _build_extraction_prompt(paper: RankedPaper, query: str) -> str:
+    abstract = paper.paper.abstract or "No abstract available."
+    return (
+        f"Research query: {query}\n\n"
+        f"Paper ID: {paper.paper.paper_id}\n"
+        f"Title: {paper.paper.title}\n"
+        f"Year: {paper.paper.year or 'unknown'}\n"
+        f"Venue: {paper.paper.venue or 'unknown'}\n"
+        f"Abstract: {abstract[:1200]}\n\n"
+        "Extract methodology, datasets, benchmarks, limitations, and findings."
+    )
+
+
+def _build_synthesis_prompt(
+    query: str,
+    extractions: list[PaperExtraction],
+    clusters: list[PaperCluster],
+    ranked_papers: list[RankedPaper] | None = None,
+) -> str:
+    cluster_payload = [
+        {"theme": cluster.theme, "summary": cluster.summary, "paper_ids": cluster.paper_ids}
+        for cluster in clusters
+    ]
+    extraction_payload = [extraction.model_dump() for extraction in extractions]
+    paper_years = {
+        paper.paper.paper_id: paper.paper.year
+        for paper in (ranked_papers or [])
+        if paper.paper.year is not None
+    }
+    years = sorted(set(paper_years.values()))
+
+    return (
+        f"Research query: {query}\n\n"
+        f"Thematic clusters:\n{json.dumps(cluster_payload, ensure_ascii=False)}\n\n"
+        f"Structured paper extractions:\n{json.dumps(extraction_payload, ensure_ascii=False)}\n\n"
+        f"Publication years present: {years}\n\n"
+        "Synthesize agreements, disagreements, trends, gaps, datasets, and methodologies "
+        "across all papers. Include benchmark comparisons where evident."
+    )
+
+
+def _extractions_to_paper_analyses(
+    extractions: list[PaperExtraction],
+    ranked_papers: list[RankedPaper] | None = None,
+) -> list[PaperAnalysis]:
+    metadata_by_id = {
+        paper.paper.paper_id: paper.paper for paper in (ranked_papers or [])
+    }
+    analyses: list[PaperAnalysis] = []
+    for extraction in extractions:
+        source = metadata_by_id.get(extraction.paper_id)
+        analyses.append(
+            PaperAnalysis(
+                paper_id=extraction.paper_id,
+                title=extraction.title,
+                year=source.year if source else None,
+                venue=source.venue if source else None,
+                url=source.url if source else None,
+                doi=source.doi if source else None,
+                key_points=extraction.findings,
+                why_relevant=extraction.methodology,
+            )
+        )
+    return analyses
+
+
+def _synthesis_handler_config(max_retries: int) -> ResponseHandlerConfig:
+    return ResponseHandlerConfig(
+        retry_config=RetryConfig(max_retries=max_retries),
+    )
+
+
+def _extraction_handler_config(max_retries: int) -> ResponseHandlerConfig:
+    return _synthesis_handler_config(max_retries)
+
+
+def resolve_synthesis_input(data: object, ctx: PipelineContext) -> SynthesisResult:
+    """Resolve a synthesis result from stage output or pipeline artifacts."""
+    artifact = ctx.get_artifact("synthesis_result")
+    if isinstance(artifact, SynthesisResult):
+        return artifact
+    if isinstance(data, SynthesisResult):
+        return data
+    return SynthesisResult()
+
+
+def recover_synthesis_output(
+    ctx: PipelineContext,
+    clusters: list[PaperCluster],
+) -> SynthesisResult:
+    """Build heuristic synthesis when the synthesis stage times out or fails."""
+    existing = ctx.get_artifact("synthesis_result")
+    if isinstance(existing, SynthesisResult):
+        return existing
+
+    ranked_papers: list[RankedPaper] = ctx.get_artifact("ranked_papers") or []
+    if not ranked_papers:
+        retrieved = ctx.get_artifact("retrieved_papers") or []
+        if retrieved:
+            ranked_papers, _ = ensure_ranked_papers(
+                retrieved,
+                ctx.query,
+                config=ctx.config.ranking,
+            )
+
+    resolved_clusters = clusters or ctx.get_artifact("paper_clusters") or []
+    extractions = [_heuristic_extraction(paper) for paper in ranked_papers]
+    synthesis = _heuristic_synthesis(ctx.query, extractions, resolved_clusters)
+    paper_analyses = _extractions_to_paper_analyses(extractions, ranked_papers)
+
+    ctx.set_artifact("paper_extractions", extractions)
+    ctx.set_artifact("paper_analyses", paper_analyses)
+    ctx.set_artifact("synthesis_result", synthesis)
+    ctx.set_artifact("ranked_papers", ranked_papers)
+    return synthesis
+
+
+async def _extract_single_paper(
+    paper: RankedPaper,
+    query: str,
+    agent: Agent,
+    handler: EnhancedResponseHandler,
+    context: RequestContext,
+) -> tuple[PaperExtraction, bool]:
+    prompt = _build_extraction_prompt(paper, query)
+    result = await handler.process_structured_response(
+        agent,
+        prompt,
+        context,
+        PaperExtraction,
+        schema_description=(
+            '{"paper_id": "...", "title": "...", "methodology": ["..."], '
+            '"datasets": ["..."], "benchmarks": ["..."], '
+            '"limitations": ["..."], "findings": ["..."]}'
+        ),
+    )
+    if result.success and isinstance(result.data, PaperExtraction):
+        return result.data, True
+    return _heuristic_extraction(paper), False
+
+
+async def extract_papers(
+    ranked_papers: list[RankedPaper],
+    query: str,
+    *,
+    llm_config: LLMConfig | None = None,
+    handler: EnhancedResponseHandler | None = None,
+    concurrency: int = 4,
+    session_id: str = "",
+    synthesis_config: SynthesisConfig | None = None,
+) -> list[PaperExtraction]:
+    """Pass A — structured extraction for each ranked paper."""
+    if not ranked_papers:
+        return []
+
+    if synthesis_config is None:
+        from ..config.settings import get_settings
+
+        synthesis_config = get_settings().synthesis
+
+    if not synthesis_config.llm_enabled:
+        logger.info(
+            "Using heuristic paper extraction for %d paper(s) (synthesis.llm_enabled=false)",
+            len(ranked_papers),
+        )
+        return [_heuristic_extraction(paper) for paper in ranked_papers]
+
+    max_llm_papers = max(1, synthesis_config.max_llm_papers)
+    llm_targets = ranked_papers[:max_llm_papers]
+    heuristic_targets = ranked_papers[max_llm_papers:]
+
+    agent = AgentFactory(llm_config).create_agent(AgentRole.EXTRACTION, config=llm_config)
+    response_handler = handler or EnhancedResponseHandler(
+        _extraction_handler_config(synthesis_config.extraction_max_retries)
+    )
+    context = RequestContext(
+        user_query=query,
+        model_name=llm_config.model if llm_config else "default",
+        session_id=session_id,
+    )
+
+    semaphore = asyncio.Semaphore(max(concurrency, 1))
+    consecutive_failures = 0
+    circuit_open = False
+    llm_extractions: list[PaperExtraction] = []
+
+    for index, paper in enumerate(llm_targets, start=1):
+        if circuit_open:
+            llm_extractions.append(_heuristic_extraction(paper))
+            continue
+
+        logger.info(
+            "LLM extracting paper %d/%d: %s",
+            index,
+            len(llm_targets),
+            paper.paper.title[:80],
+        )
+
+        async with semaphore:
+            extraction, llm_success = await _extract_single_paper(
+                paper,
+                query,
+                agent,
+                response_handler,
+                context,
+            )
+
+        if not llm_success:
+            consecutive_failures += 1
+            if consecutive_failures >= synthesis_config.circuit_breaker_failures:
+                circuit_open = True
+                logger.warning(
+                    "LLM extraction circuit breaker open after %d failures; "
+                    "using heuristics for remaining papers",
+                    consecutive_failures,
+                )
+        else:
+            consecutive_failures = 0
+
+        llm_extractions.append(extraction)
+
+    heuristic_extractions = [_heuristic_extraction(paper) for paper in heuristic_targets]
+    return llm_extractions + heuristic_extractions
+
+
+async def synthesize_collective(
+    query: str,
+    extractions: list[PaperExtraction],
+    clusters: list[PaperCluster],
+    *,
+    ranked_papers: list[RankedPaper] | None = None,
+    llm_config: LLMConfig | None = None,
+    handler: EnhancedResponseHandler | None = None,
+    session_id: str = "",
+    synthesis_config: SynthesisConfig | None = None,
+) -> SynthesisResult:
+    """Pass B — collective cross-paper synthesis."""
+    if not extractions:
+        return SynthesisResult()
+
+    if synthesis_config is None:
+        from ..config.settings import get_settings
+
+        synthesis_config = get_settings().synthesis
+
+    if not synthesis_config.llm_enabled:
+        logger.info("Using heuristic collective synthesis (synthesis.llm_enabled=false)")
+        return _heuristic_synthesis(query, extractions, clusters)
+
+    if llm_config is None:
+        from ..config.settings import get_settings
+
+        llm_config = get_settings().llm
+
+    agent = AgentFactory(llm_config).create_agent(AgentRole.SYNTHESIS, config=llm_config)
+    response_handler = handler or EnhancedResponseHandler(
+        _synthesis_handler_config(synthesis_config.collective_max_retries)
+    )
+    context = RequestContext(
+        user_query=query,
+        model_name=llm_config.model,
+        session_id=session_id,
+    )
+    prompt = _build_synthesis_prompt(query, extractions, clusters, ranked_papers)
+
+    logger.info("Running LLM collective synthesis across %d paper(s)", len(extractions))
+    result = await response_handler.process_structured_response(
+        agent,
+        prompt,
+        context,
+        SynthesisResult,
+        schema_description=(
+            '{"agreements": ["..."], "disagreements": ["..."], "trends": ["..."], '
+            '"gaps": ["..."], "datasets": ["..."], "methodologies": ["..."]}'
+        ),
+    )
+    if result.success and isinstance(result.data, SynthesisResult):
+        return result.data
+    logger.warning("LLM collective synthesis failed; using heuristic fallback")
+    return _heuristic_synthesis(query, extractions, clusters)
+
+
+async def run_synthesis(
+    query: str,
+    ranked_papers: list[RankedPaper],
+    clusters: list[PaperCluster],
+    *,
+    llm_config: LLMConfig | None = None,
+    handler: EnhancedResponseHandler | None = None,
+    concurrency: int = 4,
+    session_id: str = "",
+    synthesis_config: SynthesisConfig | None = None,
+) -> tuple[SynthesisResult, list[PaperExtraction], list[PaperAnalysis]]:
+    """Run the full two-pass synthesis workflow."""
+    if synthesis_config is None:
+        from ..config.settings import get_settings
+
+        synthesis_config = get_settings().synthesis
+
+    extractions = await extract_papers(
+        ranked_papers,
+        query,
+        llm_config=llm_config,
+        handler=handler,
+        concurrency=synthesis_config.concurrency or concurrency,
+        session_id=session_id,
+        synthesis_config=synthesis_config,
+    )
+    synthesis = await synthesize_collective(
+        query,
+        extractions,
+        clusters,
+        ranked_papers=ranked_papers,
+        llm_config=llm_config,
+        handler=handler,
+        session_id=session_id,
+        synthesis_config=synthesis_config,
+    )
+    paper_analyses = _extractions_to_paper_analyses(extractions, ranked_papers)
+    return synthesis, extractions, paper_analyses
+
+
+class SynthesisStage:
+    """Pipeline stage that runs two-pass cross-paper synthesis."""
+
+    name = "synthesis"
+
+    def __init__(
+        self,
+        handler: EnhancedResponseHandler | None = None,
+        concurrency: int = 4,
+    ) -> None:
+        self.handler = handler
+        self.concurrency = concurrency
+
+    async def run(
+        self,
+        ctx: PipelineContext,
+        data: list[PaperCluster],
+    ) -> StageResult[SynthesisResult]:
+        started = time.perf_counter()
+        warnings: list[str] = []
+        partial = False
+
+        ranked_papers: list[RankedPaper] = ctx.get_artifact("ranked_papers") or []
+        if not ranked_papers:
+            retrieved = ctx.get_artifact("retrieved_papers") or []
+            if retrieved:
+                ranked_papers, recovery_warnings = ensure_ranked_papers(
+                    retrieved,
+                    ctx.query,
+                    config=ctx.config.ranking,
+                )
+                warnings.extend(recovery_warnings)
+                ctx.set_artifact("ranked_papers", ranked_papers)
+
+        if not ranked_papers:
+            warnings.append("No ranked papers available for synthesis")
+            partial = True
+            duration_ms = (time.perf_counter() - started) * 1000
+            return StageResult(
+                output=SynthesisResult(),
+                duration_ms=duration_ms,
+                warnings=warnings,
+                partial=partial,
+            )
+
+        try:
+            if ctx.config.synthesis.llm_enabled:
+                logger.info(
+                    "Starting LLM synthesis (top %d papers). "
+                    "Set synthesis.llm_enabled=false for fast heuristic mode.",
+                    ctx.config.synthesis.max_llm_papers,
+                )
+            else:
+                logger.info("Starting fast heuristic synthesis (no LLM calls)")
+
+            synthesis, extractions, paper_analyses = await run_synthesis(
+                ctx.query,
+                ranked_papers,
+                data,
+                llm_config=ctx.config.llm,
+                handler=self.handler,
+                concurrency=ctx.config.synthesis.concurrency,
+                session_id=ctx.session.id,
+                synthesis_config=ctx.config.synthesis,
+            )
+        except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
+            warnings.append(f"Synthesis timed out or was cancelled: {exc}")
+            partial = True
+            synthesis = recover_synthesis_output(ctx, data)
+            extractions = ctx.get_artifact("paper_extractions") or []
+            paper_analyses = ctx.get_artifact("paper_analyses") or []
+        except Exception as exc:
+            warnings.append(f"Synthesis failed, using heuristic fallback: {exc}")
+            partial = True
+            extractions = [_heuristic_extraction(paper) for paper in ranked_papers]
+            synthesis = _heuristic_synthesis(ctx.query, extractions, data)
+            paper_analyses = _extractions_to_paper_analyses(extractions, ranked_papers)
+
+        ctx.set_artifact("paper_extractions", extractions)
+        ctx.set_artifact("paper_analyses", paper_analyses)
+        ctx.set_artifact("synthesis_result", synthesis)
+
+        duration_ms = (time.perf_counter() - started) * 1000
+        ctx.metrics.custom.setdefault("synthesis", {})
+        ctx.metrics.custom["synthesis"] = {
+            "papers_extracted": len(extractions),
+            "agreements": len(synthesis.agreements),
+            "gaps": len(synthesis.gaps),
+        }
+
+        return StageResult(
+            output=synthesis,
+            duration_ms=duration_ms,
+            metrics={
+                "papers_extracted": len(extractions),
+                "agreement_count": len(synthesis.agreements),
+                "gap_count": len(synthesis.gaps),
+            },
+            warnings=warnings,
+            partial=partial,
+        )
