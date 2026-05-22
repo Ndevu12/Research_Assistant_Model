@@ -1,0 +1,121 @@
+site_name: AI Research Assistant
+site_url: https://ndevu12.github.io/Research_Assistant_Model/
+repo_url: https://github.com/Ndevu12/Research_Assistant_Model
+edit_uri: edit/main/docs/
+
+use_directory_urls: true
+
+exclude_docs: |
+  research-quality-known-issues.md
+  _analysis/*
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/installation.md
+      - getting-started/quick-start.md
+      - getting-started/health-check.md
+  - User Guide:
+      - user-guide/cli.md
+      - user-guide/cli-vs-api.md
+      - user-guide/interactive-sessions.md
+      - user-guide/output-formats.md
+      - user-guide/configuration-cookbook.md
+  - Architecture:
+      - architecture/overview.md
+      - architecture/data-model.md
+      - architecture/pipeline-stages.md
+      - architecture/artifacts.md
+      - architecture/llm-layer.md
+      - Stages:
+          - architecture/stages/query-understanding.md
+          - architecture/stages/query-expansion.md
+          - architecture/stages/retrieval.md
+          - architecture/stages/deduplication.md
+          - architecture/stages/ranking.md
+          - architecture/stages/relevance-scoring.md
+          - architecture/stages/clustering.md
+          - architecture/stages/synthesis.md
+          - architecture/stages/gap-analysis.md
+          - architecture/stages/citation-export.md
+          - architecture/stages/report-generation.md
+  - Configuration:
+      - configuration/precedence.md
+      - configuration/environment-variables.md
+      - configuration/yaml-reference.md
+      - configuration/stage-toggles.md
+  - Retrieval:
+      - retrieval/overview.md
+      - retrieval/provider-matrix.md
+      - Providers:
+          - retrieval/per-provider/openalex.md
+          - retrieval/per-provider/semantic-scholar.md
+          - retrieval/per-provider/arxiv.md
+          - retrieval/per-provider/crossref.md
+  - LLM:
+      - llm/ollama.md
+      - llm/cloud-providers.md
+      - llm/heuristic-vs-llm.md
+  - API:
+      - api/index.md
+      - api/endpoints.md
+  - Operations:
+      - operations/logging-and-debug.md
+      - operations/progress-streaming.md
+      - operations/troubleshooting.md
+  - Development:
+      - development/local-setup.md
+      - development/testing.md
+      - development/import-conventions.md
+      - development/extensibility.md
+      - development/publishing.md
+      - contributing.md
+  - Reference:
+      - reference/canonical-sources.md
+  - Quality:
+      - quality/known-issues.md
+  - Setup System:
+      - setup-system/index.md

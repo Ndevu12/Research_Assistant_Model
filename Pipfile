@@ -24,6 +24,10 @@ torch = {version = "*", index = "pytorch-cpu"}
 rich = "*"
 
 [dev-packages]
+mkdocs = "*"
+mkdocs-material = "*"
+mkdocs-mermaid2-plugin = "*"
+linkchecker = "*"
 
 [requires]
 python_version = "3.13"
