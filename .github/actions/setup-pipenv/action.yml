@@ -30,4 +30,9 @@ runs:
         python -m pip install --upgrade pip
         pip install pipenv
         pipenv --version
+        # Recreate virtualenv if it's corrupted or missing
+        if [ ! -f .venv/bin/python ]; then
+          echo "Virtualenv corrupted or missing, removing and recreating..."
+          rm -rf .venv
+        fi
         pipenv install --deploy
