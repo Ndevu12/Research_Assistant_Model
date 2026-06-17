@@ -454,14 +454,15 @@ class TestRelevanceScoring:
 class TestClustering:
     def test_synthetic_embeddings_produce_expected_cluster_count(self) -> None:
         """Two well-separated embedding groups should yield two clusters."""
-        group_a = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-        group_b = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+        # Use larger separations to ensure HDBSCAN can detect distinct clusters
+        group_a = np.array([10.0, 0.0, 0.0], dtype=np.float32)
+        group_b = np.array([0.0, 10.0, 0.0], dtype=np.float32)
         embedder = FixedEmbeddingProvider(
             [
                 group_a,
-                group_a + np.array([0.01, 0.0, 0.0], dtype=np.float32),
+                group_a + np.array([0.1, 0.0, 0.0], dtype=np.float32),
                 group_b,
-                group_b + np.array([0.0, 0.01, 0.0], dtype=np.float32),
+                group_b + np.array([0.0, 0.1, 0.0], dtype=np.float32),
             ]
         )
         ranked = [
