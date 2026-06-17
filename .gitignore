@@ -45,6 +45,8 @@ Thumbs.db
 # Ollama
 .ollama/
 
+# Kiro
+.kiro/
 
 # Environment variables
 .env
