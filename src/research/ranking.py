@@ -7,6 +7,7 @@ import math
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -17,38 +18,10 @@ from ..retrieval.models import RankedPaper, RetrievedPaper
 from .canonical_works import CanonicalWork, load_canonical_works, match_canonical_work
 from .embedding_context import store_ranking_embedding_result
 from .metadata_sanity import sanitize_papers_metadata
+from .text_utils import GENERIC_QUERY_TERMS, extract_query_terms, term_matches_text
 
 if TYPE_CHECKING:
     from ..config.settings import RankingConfig, RankingWeights
-
-_STOP_WORDS = {
-    "the",
-    "a",
-    "an",
-    "and",
-    "or",
-    "but",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "of",
-    "with",
-    "by",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "being",
-    "paper",
-    "papers",
-    "research",
-    "study",
-    "studies",
-}
 
 _KNOWN_VENUES = {
     "neurips",
@@ -68,31 +41,6 @@ _KNOWN_VENUES = {
     "jmlr",
 }
 
-_GENERIC_QUERY_TERMS = frozenset(
-    {
-        "mechanism",
-        "mechanisms",
-        "method",
-        "methods",
-        "approach",
-        "approaches",
-        "application",
-        "applications",
-        "model",
-        "models",
-        "system",
-        "systems",
-        "based",
-        "using",
-        "recent",
-    }
-)
-
-
-def _extract_query_terms(query: str) -> set[str]:
-    words = re.findall(r"\b\w+\b", query.lower())
-    return {word for word in words if word not in _STOP_WORDS and len(word) > 2}
-
 
 def _paper_text(paper: RetrievedPaper) -> str:
     parts = [paper.title]
@@ -110,28 +58,18 @@ def _paper_text_lower(paper: RetrievedPaper) -> str:
 
 
 def _core_query_terms(query_terms: set[str]) -> list[str]:
-    return sorted(term for term in query_terms if term not in _GENERIC_QUERY_TERMS)
-
-
-def _term_matches_text(term: str, text: str) -> bool:
-    if term in text:
-        return True
-    if term.endswith("s") and term[:-1] in text:
-        return True
-    if f"{term}s" in text:
-        return True
-    return False
+    return sorted(term for term in query_terms if term not in GENERIC_QUERY_TERMS)
 
 
 def applies_domain_penalty(query: str, paper: RetrievedPaper) -> bool:
     """Return True when a multi-concept query is only partially matched."""
-    query_terms = _extract_query_terms(query)
+    query_terms = extract_query_terms(query)
     core_terms = _core_query_terms(query_terms)
     if len(core_terms) < 2:
         return False
 
     text = _paper_text_lower(paper)
-    matched_core = [term for term in core_terms if _term_matches_text(term, text)]
+    matched_core = [term for term in core_terms if term_matches_text(term, text)]
     return len(matched_core) < len(core_terms)
 
 
@@ -232,9 +170,11 @@ def signal_citation_count(paper: RetrievedPaper, papers: list[RetrievedPaper]) -
     return min(normalized, 1.0)
 
 
-def signal_recency(paper: RetrievedPaper, current_year: int = 2026) -> float | None:
+def signal_recency(paper: RetrievedPaper, current_year: int | None = None) -> float | None:
     if paper.year is None:
         return None
+    if current_year is None:
+        current_year = datetime.now(timezone.utc).year
     age = max(current_year - paper.year, 0)
     if age >= 20:
         return 0.1
@@ -311,7 +251,7 @@ def score_paper(
     canonical_boost: float = 0.0,
     canonical_works: list[CanonicalWork] | None = None,
 ) -> RankedPaper:
-    query_terms = _extract_query_terms(query)
+    query_terms = extract_query_terms(query)
     embedding_sim = signal_embedding_similarity(
         paper,
         query_embedding,
