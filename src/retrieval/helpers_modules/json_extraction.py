@@ -141,13 +141,7 @@ def _remove_common_prefixes_suffixes(text: str) -> str:
         r'^.*?(?=\{)',  # Everything before the first opening brace
         r'^[^{]*',      # Non-brace characters at the start
     ]
-    
-    # Common suffixes to remove  
-    suffixes = [
-        r'\}.*?$',      # Everything after the last closing brace (keep the brace)
-        r'[^}]*$',      # Non-brace characters at the end
-    ]
-    
+
     cleaned = text
     
     # Apply prefix removal

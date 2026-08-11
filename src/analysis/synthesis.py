@@ -12,8 +12,8 @@ from pydantic_ai import Agent
 
 from ..core.context import PipelineContext, StageResult
 from ..core.paper_adapters import ensure_ranked_papers
-from ..models import AgentFactory, AgentRole, ROLE_SYSTEM_PROMPTS
-from ..research.query_expansion import extract_core_concepts
+from ..models import AgentFactory, AgentRole, create_llm_agent
+from ..research.text_utils import extract_core_concepts
 from ..retrieval.models import (
     PaperAnalysis,
     PaperCluster,
@@ -29,13 +29,7 @@ if TYPE_CHECKING:
     from ..config.settings import LLMConfig, SynthesisConfig
 
 
-def create_llm_agent(system_prompt: str, llm_config: LLMConfig | None = None) -> Agent:
-    """Create a pydantic-ai agent from application LLM settings."""
-    return AgentFactory(llm_config).create_agent_with_prompt(system_prompt, llm_config)
-
-
-EXTRACTION_SYSTEM_PROMPT = ROLE_SYSTEM_PROMPTS[AgentRole.EXTRACTION]
-SYNTHESIS_SYSTEM_PROMPT = ROLE_SYSTEM_PROMPTS[AgentRole.SYNTHESIS]
+__all__ = ["create_llm_agent", "SynthesisStage", "extract_papers", "synthesize_collective"]
 
 HEURISTIC_DISAGREEMENT_PLACEHOLDER = (
     "Cross-paper disagreement analysis limited in heuristic mode."
@@ -261,10 +255,6 @@ def _synthesis_handler_config(max_retries: int) -> ResponseHandlerConfig:
     )
 
 
-def _extraction_handler_config(max_retries: int) -> ResponseHandlerConfig:
-    return _synthesis_handler_config(max_retries)
-
-
 def resolve_synthesis_input(data: object, ctx: PipelineContext) -> SynthesisResult:
     """Resolve a synthesis result from stage output or pipeline artifacts."""
     artifact = ctx.get_artifact("synthesis_result")
@@ -367,7 +357,7 @@ async def extract_papers(
 
     agent = AgentFactory(llm_config).create_agent(AgentRole.EXTRACTION, config=llm_config)
     response_handler = handler or EnhancedResponseHandler(
-        _extraction_handler_config(synthesis_config.extraction_max_retries)
+        _synthesis_handler_config(synthesis_config.extraction_max_retries)
     )
     context = RequestContext(
         user_query=query,
@@ -375,33 +365,30 @@ async def extract_papers(
         session_id=session_id,
     )
 
+    from ..utils.progress_reporter import get_progress_reporter
+
     semaphore = asyncio.Semaphore(max(concurrency, 1))
-    consecutive_failures = 0
-    circuit_open = False
-    llm_extractions: list[PaperExtraction] = []
+    breaker = {"consecutive_failures": 0, "open": False}
 
-    for index, paper in enumerate(llm_targets, start=1):
-        if circuit_open:
-            llm_extractions.append(_heuristic_extraction(paper))
-            continue
+    async def _extract_with_circuit(index: int, paper: RankedPaper) -> PaperExtraction:
+        async with semaphore:
+            if breaker["open"]:
+                return _heuristic_extraction(paper)
 
-        title_preview = paper.paper.title[:72]
-        logger.info(
-            "LLM extracting paper %d/%d: %s",
-            index,
-            len(llm_targets),
-            paper.paper.title[:80],
-        )
-
-        from ..utils.progress_reporter import get_progress_reporter
-
-        reporter = get_progress_reporter()
-        if reporter is not None:
-            reporter.set_activity(
-                f"Analyzing paper {index}/{len(llm_targets)}: {title_preview}…"
+            title_preview = paper.paper.title[:72]
+            logger.info(
+                "LLM extracting paper %d/%d: %s",
+                index,
+                len(llm_targets),
+                paper.paper.title[:80],
             )
 
-        async with semaphore:
+            reporter = get_progress_reporter()
+            if reporter is not None:
+                reporter.set_activity(
+                    f"Analyzing paper {index}/{len(llm_targets)}: {title_preview}…"
+                )
+
             extraction, llm_success = await _extract_single_paper(
                 paper,
                 query,
@@ -410,19 +397,32 @@ async def extract_papers(
                 context,
             )
 
-        if not llm_success:
-            consecutive_failures += 1
-            if consecutive_failures >= synthesis_config.circuit_breaker_failures:
-                circuit_open = True
+        if llm_success:
+            breaker["consecutive_failures"] = 0
+        else:
+            breaker["consecutive_failures"] += 1
+            if (
+                not breaker["open"]
+                and breaker["consecutive_failures"]
+                >= synthesis_config.circuit_breaker_failures
+            ):
+                breaker["open"] = True
                 logger.warning(
                     "LLM extraction circuit breaker open after %d failures; "
                     "using heuristics for remaining papers",
-                    consecutive_failures,
+                    breaker["consecutive_failures"],
                 )
-        else:
-            consecutive_failures = 0
 
-        llm_extractions.append(extraction)
+        return extraction
+
+    llm_extractions = list(
+        await asyncio.gather(
+            *(
+                _extract_with_circuit(index, paper)
+                for index, paper in enumerate(llm_targets, start=1)
+            )
+        )
+    )
 
     heuristic_extractions = [_heuristic_extraction(paper) for paper in heuristic_targets]
     return llm_extractions + heuristic_extractions

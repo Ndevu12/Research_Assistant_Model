@@ -165,6 +165,7 @@ class ResearchPipeline:
         }
 
         artifact_keys = (
+            "expanded_queries",
             "ranked_papers",
             "retrieved_papers",
             "paper_analyses",

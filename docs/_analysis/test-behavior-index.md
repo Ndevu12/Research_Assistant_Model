@@ -309,7 +309,7 @@ Source: all 28 files matching `tests/test_*.py`. Internal reference for `docs/de
 
 | | |
 |---|---|
-| **Modules** | `src.utils.{response_models,retry_manager,quality_monitor,enhanced_validation,content_quality,json_processing,model_adaptation,fallback_processing}` |
+| **Modules** | `src.utils.{response_models,retry_manager,quality_monitor,enhanced_validation,content_quality,model_adaptation,fallback_processing}` |
 
 | Class | Behavior |
 |-------|----------|

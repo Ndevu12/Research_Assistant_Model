@@ -42,7 +42,6 @@ def format_author_list_mla(authors: list[str]) -> str:
             return f"{parts[-1]}, {' '.join(parts[:-1])}."
         return f"{authors[0]}."
     first = format_author_list_mla([authors[0]]).rstrip(".")
-    others = ", ".join(authors[1:])
     return f"{first}, et al."
 
 

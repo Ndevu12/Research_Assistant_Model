@@ -107,11 +107,14 @@ class LLMProvider(ABC):
     ) -> str:
         """Run a single completion and return the model output text."""
         model = self.create_model(config)
-        agent = Agent(model=model, system_prompt=system_prompt or "")
         if schema is not None:
-            result = await agent.run(prompt, result_type=schema)
-            if hasattr(result, "data") and result.data is not None:
-                return result.data.model_dump_json()
-            return str(result.output)
+            structured_agent: Agent[None, BaseModel] = Agent(
+                model=model,
+                system_prompt=system_prompt or "",
+                output_type=schema,
+            )
+            structured_result = await structured_agent.run(prompt)
+            return structured_result.output.model_dump_json()
+        agent = Agent(model=model, system_prompt=system_prompt or "")
         result = await agent.run(prompt)
         return str(result.output)

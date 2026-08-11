@@ -93,11 +93,6 @@ def dedupe_by_metadata(papers: list[RetrievedPaper]) -> list[RetrievedPaper]:
     return output
 
 
-def _paper_preference_key(paper: RetrievedPaper) -> tuple[int, int, int, int, int]:
-    """Rank duplicates; higher values are preferred to keep."""
-    return metadata_quality_key(paper)
-
-
 def _paper_dedup_text(paper: RetrievedPaper) -> str:
     parts = [paper.title]
     if paper.abstract:
@@ -115,19 +110,25 @@ def dedupe_by_embedding(
         return papers, 0
 
     texts = [_paper_dedup_text(paper) for paper in papers]
-    embeddings = embedder.embed_texts(texts)
+    embeddings = np.asarray(embedder.embed_texts(texts), dtype=np.float32)
+
+    # One matrix product yields all pairwise cosine similarities.
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    norms[norms == 0.0] = 1.0
+    normalized = embeddings / norms
+    similarity_matrix = normalized @ normalized.T
+
     removed = 0
     keep_indices: list[int] = []
 
     for index, paper in enumerate(papers):
         duplicate = False
-        for kept_index in keep_indices:
-            similarity = embedder.similarity(embeddings[index], embeddings[kept_index])
-            if similarity >= threshold:
+        for position, kept_index in enumerate(keep_indices):
+            if similarity_matrix[index, kept_index] >= threshold:
                 duplicate = True
                 removed += 1
-                if _paper_preference_key(paper) > _paper_preference_key(papers[kept_index]):
-                    keep_indices[keep_indices.index(kept_index)] = index
+                if metadata_quality_key(paper) > metadata_quality_key(papers[kept_index]):
+                    keep_indices[position] = index
                 break
         if not duplicate:
             keep_indices.append(index)

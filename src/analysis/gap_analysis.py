@@ -8,16 +8,13 @@ import time
 from typing import TYPE_CHECKING
 
 from ..core.context import PipelineContext, StageResult
-from ..models import AgentFactory, AgentRole, ROLE_SYSTEM_PROMPTS
+from ..models import AgentFactory, AgentRole
 from ..retrieval.models import GapAnalysisResult, PaperCluster, SynthesisResult
 from ..utils.enhanced_response_handler import EnhancedResponseHandler
 from ..utils.response_models import RequestContext, ResponseHandlerConfig
 
 if TYPE_CHECKING:
     from ..config.settings import LLMConfig
-
-
-GAP_ANALYSIS_SYSTEM_PROMPT = ROLE_SYSTEM_PROMPTS[AgentRole.GAP_ANALYSIS]
 
 
 def resolve_synthesis_input(data: object, ctx: PipelineContext) -> SynthesisResult:

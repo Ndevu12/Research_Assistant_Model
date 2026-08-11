@@ -132,5 +132,5 @@ def _enhanced_partial_recovery(
         )
     except ImportError:
         # Fallback processing not available, use existing recovery
-        from ..retrieval.orchestrator import _attempt_partial_recovery
-        return _attempt_partial_recovery(raw_output, clean_json, parsed_data)
+        from ..retrieval.helpers_modules.recovery import enhanced_partial_recovery
+        return enhanced_partial_recovery(raw_output, clean_json, parsed_data)

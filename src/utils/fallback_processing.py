@@ -285,7 +285,6 @@ class TextFallbackProcessor:
         Returns:
             FallbackResult: Extracted themes
         """
-        themes = []
         warnings = []
         
         # Look for research-related keywords
@@ -517,10 +516,10 @@ def enhance_partial_recovery_with_fallback(
         RecoveryResult: Enhanced recovery result with fallback data
     """
     # First try existing recovery methods
-    from ..retrieval.orchestrator import _attempt_partial_recovery
-    
+    from ..retrieval.helpers_modules.recovery import enhanced_partial_recovery
+
     try:
-        existing_result = _attempt_partial_recovery(raw_output, clean_json, parsed_data)
+        existing_result = enhanced_partial_recovery(raw_output, clean_json, parsed_data)
         if existing_result.success and existing_result.confidence_score > 0.5:
             logger.info("Existing recovery method succeeded, using that result")
             return existing_result

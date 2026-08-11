@@ -7,8 +7,13 @@ results returned by AI models.
 """
 
 import re
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, TYPE_CHECKING
 from collections import Counter
+
+if TYPE_CHECKING:
+    from pydantic_ai import Agent
+
+    from ..retrieval.models import PaperAnalysis, ResearchReport
 
 from .response_models import (
     ContentQualityConfig, EnhancementConfig, ContentQualityResult, 
