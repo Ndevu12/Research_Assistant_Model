@@ -9,9 +9,18 @@ from typing import TYPE_CHECKING
 
 from ..core.context import PipelineContext, StageResult
 from ..retrieval.models import ExpandedQuerySet, QueryUnderstandingResult
+from .text_utils import QUERY_STOP_WORDS, extract_core_concepts
 
 if TYPE_CHECKING:
     from ..config.settings import QueryExpansionConfig
+
+__all__ = [
+    "extract_core_concepts",
+    "expand_query_heuristic",
+    "QueryExpansionStage",
+    "DOMAIN_SYNONYMS",
+    "ACRONYM_EXPANSIONS",
+]
 
 DOMAIN_SYNONYMS: dict[str, list[str]] = {
     "machine learning": ["artificial intelligence", "deep learning", "neural networks"],
@@ -43,42 +52,6 @@ ACRONYM_EXPANSIONS: dict[str, str] = {
     "ai": "artificial intelligence",
     "dl": "deep learning",
 }
-
-_STOP_WORDS = {
-    "the",
-    "a",
-    "an",
-    "and",
-    "or",
-    "but",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "of",
-    "with",
-    "by",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "being",
-    "paper",
-    "papers",
-    "research",
-    "study",
-    "studies",
-}
-
-
-def extract_core_concepts(query: str) -> list[str]:
-    """Extract core concept terms from a query."""
-    words = re.findall(r"\b\w+\b", query.lower())
-    return [word for word in words if word not in _STOP_WORDS and len(word) > 3][:5]
-
 
 def _token_set(text: str) -> set[str]:
     return set(re.findall(r"\b\w+\b", text.lower()))
@@ -158,7 +131,7 @@ def _passes_broad_term_guard(
     if len(key_concepts) < 2:
         return True
 
-    variant_tokens = _token_set(variant) - _STOP_WORDS
+    variant_tokens = _token_set(variant) - QUERY_STOP_WORDS
     if len(variant_tokens) == 1 and variant_tokens & _BROAD_SINGLE_CONCEPT_TERMS:
         return False
 

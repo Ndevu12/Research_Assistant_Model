@@ -13,7 +13,6 @@ from .models import (
     SynthesisResult,
 )
 from .helpers import _normalize_title, _dedupe, _openalex_abstract_from_inverted_index
-from .openalex import search_openalex
 from .providers import (
     ArxivProvider,
     CrossRefProvider,
@@ -30,5 +29,4 @@ from .providers import (
     search_all_enabled,
     search_enabled_providers,
 )
-from .semanticscholar import search_semantic_scholar
 from .rendering import render_markdown

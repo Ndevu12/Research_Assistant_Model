@@ -7,21 +7,24 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from ..embeddings.base import cosine_similarity
+
 if TYPE_CHECKING:
     from ..core.context import PipelineContext
     from ..retrieval.models import RankedPaper, RetrievedPaper
 
+__all__ = [
+    "cosine_similarity",
+    "store_ranking_embedding_result",
+    "store_embedding_artifacts",
+    "get_query_embedding",
+    "get_paper_embeddings",
+    "get_paper_embedding",
+    "resolve_paper_embedding_matrix",
+]
+
 QUERY_EMBEDDING_KEY = "query_embedding"
 PAPER_EMBEDDINGS_KEY = "paper_embeddings"
-
-
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """Cosine similarity between two vectors."""
-    a_norm = np.linalg.norm(a)
-    b_norm = np.linalg.norm(b)
-    if a_norm == 0.0 or b_norm == 0.0:
-        return 0.0
-    return float(np.dot(a, b) / (a_norm * b_norm))
 
 
 def store_ranking_embedding_result(
