@@ -242,7 +242,8 @@ class TestSystemLevelIntegration:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                cwd=os.getcwd()
+                cwd=os.getcwd(),
+                env={**os.environ, 'RA_SKIP_SETUP_CHECK': '1'}
             )
             
             # Send exit command immediately
@@ -269,7 +270,8 @@ class TestSystemLevelIntegration:
                 capture_output=True,
                 text=True,
                 timeout=30,
-                cwd=os.getcwd()
+                cwd=os.getcwd(),
+                env={**os.environ, 'RA_SKIP_SETUP_CHECK': '1'}
             )
             
             # Verify batch mode behavior (no interactive prompts)

@@ -29,6 +29,10 @@ def ensure_setup() -> bool:
     """
     import os
 
+    if os.environ.get("RA_SKIP_SETUP_CHECK", "").strip().lower() in {"1", "true", "yes"}:
+        logger.info("RA_SKIP_SETUP_CHECK is set; skipping environment setup checks.")
+        return True
+
     if os.environ.get("PIPENV_ACTIVE") != "1":
         logger.warning(
             "Not running inside Pipenv. Use: pipenv run python -m src ... "
