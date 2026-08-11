@@ -9,6 +9,7 @@ import os
 import aiohttp
 
 from ..models import RetrievedPaper
+from ...utils.logging_system import logger
 from ...utils.message_formatter import MessageFormatter
 from .base import RetrievalProvider
 
@@ -51,7 +52,7 @@ class SemanticScholarProvider(RetrievalProvider):
                 ) as response:
                     if response.status == 429:
                         retry_after = response.headers.get("Retry-After", "60")
-                        print(
+                        logger.warning(
                             MessageFormatter.api_rate_limit_message(
                                 "Semantic Scholar",
                                 retry_after,
@@ -65,7 +66,7 @@ class SemanticScholarProvider(RetrievalProvider):
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 if attempt == max_retries - 1:
                     raise
-                print(
+                logger.warning(
                     MessageFormatter.api_retry_message(
                         "Semantic Scholar",
                         attempt + 1,
@@ -74,7 +75,7 @@ class SemanticScholarProvider(RetrievalProvider):
                 )
                 await asyncio.sleep(2 ** attempt)
         else:
-            print(MessageFormatter.api_max_retries_message("Semantic Scholar"))
+            logger.warning(MessageFormatter.api_max_retries_message("Semantic Scholar"))
             return []
 
         return [self.normalize(item) for item in data.get("data", []) or []][:resolved_limit]
