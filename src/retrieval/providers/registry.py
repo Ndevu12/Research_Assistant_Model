@@ -95,11 +95,15 @@ async def search_enabled_providers(
     query: str,
     settings: AppSettings | None = None,
     limit: int | None = None,
-) -> tuple[dict[str, list[RetrievedPaper]], list[str]]:
-    """Search all enabled providers with graceful per-provider fallback."""
+) -> tuple[dict[str, list[RetrievedPaper]], list[str], set[str]]:
+    """Search all enabled providers with graceful per-provider fallback.
+
+    Returns papers grouped by provider name, warning messages, and the names of
+    providers that raised an error.
+    """
     providers = get_enabled_providers(settings)
     if not providers:
-        return {}, ["No retrieval providers enabled"]
+        return {}, ["No retrieval providers enabled"], set()
 
     async def _safe_search(
         provider: RetrievalProvider,
@@ -114,12 +118,14 @@ async def search_enabled_providers(
 
     by_provider: dict[str, list[RetrievedPaper]] = {}
     warnings: list[str] = []
+    failed: set[str] = set()
     for provider_name, papers, error in results:
-        by_provider[provider_name] = papers
+        by_provider.setdefault(provider_name, []).extend(papers)
         if error:
             warnings.append(f"Provider '{provider_name}' failed for query '{query}': {error}")
+            failed.add(provider_name)
 
-    return by_provider, warnings
+    return by_provider, warnings, failed
 
 
 async def search_all_enabled(
@@ -129,7 +135,7 @@ async def search_all_enabled(
     limit: int | None = None,
 ) -> list[RetrievedPaper]:
     """Search all enabled providers and return a flat combined list."""
-    by_provider, _warnings = await search_enabled_providers(
+    by_provider, _warnings, _failed = await search_enabled_providers(
         session,
         query,
         settings=settings,

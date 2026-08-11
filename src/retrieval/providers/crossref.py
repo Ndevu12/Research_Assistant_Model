@@ -10,6 +10,7 @@ import re
 import aiohttp
 
 from ..models import RetrievedPaper
+from ...utils.logging_system import logger
 from ...utils.message_formatter import MessageFormatter
 from .base import RetrievalProvider
 
@@ -46,7 +47,7 @@ class CrossRefProvider(RetrievalProvider):
                 ) as response:
                     if response.status == 429:
                         retry_after = response.headers.get("Retry-After", "60")
-                        print(
+                        logger.warning(
                             MessageFormatter.api_rate_limit_message(
                                 "CrossRef",
                                 retry_after,
@@ -60,10 +61,10 @@ class CrossRefProvider(RetrievalProvider):
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 if attempt == max_retries - 1:
                     raise
-                print(MessageFormatter.api_retry_message("CrossRef", attempt + 1, str(exc)))
+                logger.warning(MessageFormatter.api_retry_message("CrossRef", attempt + 1, str(exc)))
                 await asyncio.sleep(2 ** attempt)
         else:
-            print(MessageFormatter.api_max_retries_message("CrossRef"))
+            logger.warning(MessageFormatter.api_max_retries_message("CrossRef"))
             return []
 
         message = data.get("message") or {}

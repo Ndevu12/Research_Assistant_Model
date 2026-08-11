@@ -137,7 +137,7 @@ async def test_search_enabled_providers_falls_back_when_one_provider_fails() -> 
             "src.retrieval.providers.registry.get_enabled_providers",
             return_value=providers,
         ):
-            by_provider, warnings = await search_enabled_providers(
+            by_provider, warnings, failed = await search_enabled_providers(
                 session,
                 "transformers",
                 settings=settings,
@@ -146,6 +146,7 @@ async def test_search_enabled_providers_falls_back_when_one_provider_fails() -> 
     assert by_provider["success_registry_provider"][0].title == "Recovered"
     assert by_provider["failing_registry_provider"] == []
     assert any("failing_registry_provider" in warning for warning in warnings)
+    assert failed == {"failing_registry_provider"}
 
 
 @pytest.mark.asyncio

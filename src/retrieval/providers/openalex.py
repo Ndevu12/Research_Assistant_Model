@@ -9,6 +9,7 @@ import aiohttp
 
 from ..helpers import _openalex_abstract_from_inverted_index
 from ..models import RetrievedPaper
+from ...utils.logging_system import logger
 from ...utils.message_formatter import MessageFormatter
 from .base import RetrievalProvider
 
@@ -43,7 +44,7 @@ class OpenAlexProvider(RetrievalProvider):
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 if attempt == max_retries - 1:
                     raise
-                print(MessageFormatter.api_retry_message("OpenAlex", attempt + 1, str(exc)))
+                logger.warning(MessageFormatter.api_retry_message("OpenAlex", attempt + 1, str(exc)))
                 await asyncio.sleep(2 ** attempt)
 
         return [self.normalize(item) for item in data.get("results", [])][:per_page]

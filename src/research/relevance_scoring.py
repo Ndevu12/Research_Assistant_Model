@@ -13,40 +13,14 @@ from ..core.context import PipelineContext, StageResult
 from ..core.paper_adapters import ensure_ranked_papers
 from ..retrieval.models import QueryUnderstandingResult, RankedPaper, RetrievedPaper
 from .embedding_context import cosine_similarity, get_paper_embedding, get_query_embedding
-from .query_expansion import extract_core_concepts
+from .text_utils import (
+    GENERIC_QUERY_TERMS,
+    extract_core_concepts,
+    term_matches_text,
+)
 
 if TYPE_CHECKING:
     from ..config.settings import RelevanceScoringConfig
-
-_GENERIC_CONCEPT_TERMS = frozenset(
-    {
-        "mechanism",
-        "mechanisms",
-        "method",
-        "methods",
-        "approach",
-        "approaches",
-        "application",
-        "applications",
-        "model",
-        "models",
-        "system",
-        "systems",
-        "based",
-        "using",
-        "recent",
-    }
-)
-
-
-def _term_matches_text(term: str, text: str) -> bool:
-    if term in text:
-        return True
-    if term.endswith("s") and term[:-1] in text:
-        return True
-    if f"{term}s" in text:
-        return True
-    return False
 
 
 def _core_concepts(query: str, ctx: PipelineContext) -> list[str]:
@@ -59,7 +33,7 @@ def _core_concepts(query: str, ctx: PipelineContext) -> list[str]:
     return [
         concept
         for concept in concepts
-        if concept.lower() not in _GENERIC_CONCEPT_TERMS
+        if concept.lower() not in GENERIC_QUERY_TERMS
     ]
 
 
@@ -77,10 +51,10 @@ def _concept_groups_match(
 
     if mode != "any_group":
         text = " ".join(part for part in (title, abstract) if part)
-        return all(_term_matches_text(concept, text) for concept in concepts)
+        return all(term_matches_text(concept, text) for concept in concepts)
 
     return all(
-        _term_matches_text(concept, title) or _term_matches_text(concept, abstract)
+        term_matches_text(concept, title) or term_matches_text(concept, abstract)
         for concept in concepts
     )
 
