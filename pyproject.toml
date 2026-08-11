@@ -7,3 +7,17 @@ asyncio_mode = "auto"
 markers = [
     "slow: subprocess or end-to-end tests (excluded from default CI)",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# Correctness-focused: syntax errors, undefined names, unused imports/variables.
+select = ["E9", "F"]
+ignore = [
+    "F401",  # __init__.py re-exports are intentional
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F811", "F841"]

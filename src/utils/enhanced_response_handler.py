@@ -311,7 +311,7 @@ class EnhancedResponseHandler:
                         else:
                             # No more retries - attempt recovery
                             self.logger.warning(
-                                f"Maximum retries reached, attempting recovery",
+                                "Maximum retries reached, attempting recovery",
                                 extra={
                                     'error_type': enhanced_validation.error_type,
                                     'total_attempts': attempt + 1,

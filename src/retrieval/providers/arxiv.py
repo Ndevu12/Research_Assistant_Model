@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import aiohttp
 
 from ..models import RetrievedPaper
+from ...utils.logging_system import logger
 from ...utils.message_formatter import MessageFormatter
 from .base import RetrievalProvider
 
@@ -59,10 +60,10 @@ class ArxivProvider(RetrievalProvider):
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 if attempt == max_retries - 1:
                     raise
-                print(MessageFormatter.api_retry_message("arXiv", attempt + 1, str(exc)))
+                logger.warning(MessageFormatter.api_retry_message("arXiv", attempt + 1, str(exc)))
                 await asyncio.sleep(2 ** attempt)
         else:
-            print(MessageFormatter.api_max_retries_message("arXiv"))
+            logger.warning(MessageFormatter.api_max_retries_message("arXiv"))
             return []
 
         root = ET.fromstring(body)

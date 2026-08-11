@@ -17,59 +17,30 @@ env:
   PIPENV_DONT_LOAD_ENV: "1"
 
 jobs:
-  test:
-    name: Tests (${{ matrix.scope }})
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - scope: core
-            paths: >-
-              tests/test_config_settings.py
-              tests/test_pipeline_core.py
-              tests/test_models.py
-              tests/test_paper_adapters.py
-              tests/test_memory.py
-              tests/test_progress_reporter.py
-              tests/test_message_formatting.py
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-          - scope: retrieval
-            paths: >-
-              tests/test_retrieval_stage.py
-              tests/test_export.py
-              tests/test_reporting.py
-              tests/test_embeddings.py
-              tests/test_providers.py
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
-          - scope: research
-            paths: >-
-              tests/test_research_stages.py
-              tests/test_research_quality.py
-              tests/test_synthesis.py
-              tests/test_resolve_llm_features.py
+      - name: Install ruff
+        run: pip install ruff
 
-          - scope: cli
-            paths: >-
-              tests/test_interactive_mode.py
-              tests/test_input_handler.py
-              tests/test_main_mode_detection.py
-              tests/test_signal_handling.py
-              tests/test_interactive_filters.py
-              tests/test_complete_workflow.py
+      - name: Ruff check
+        run: ruff check src tests setups
 
-          - scope: llm
-            paths: >-
-              tests/test_llm_providers.py
-              tests/test_model_selection.py
-              tests/test_graceful_response_handling.py
-              tests/test_json_parsing_bug_exploration.py
-              tests/test_json_parsing_preservation.py
-
-          - scope: api
-            paths: tests/test_phase3_extensibility.py
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -78,20 +49,21 @@ jobs:
       - name: Setup Pipenv
         uses: ./.github/actions/setup-pipenv
 
+      # Auto-discovers every test file so new tests can never be silently skipped.
       - name: Run tests
-        run: pipenv run pytest -m "not slow" --tb=short -q ${{ matrix.paths }}
+        run: pipenv run pytest tests/ -m "not slow" --tb=short -q
 
   ci-complete:
     name: CI complete
     runs-on: ubuntu-latest
-    needs: test
+    needs: [lint, test]
     if: always()
 
     steps:
-      - name: Verify all scopes passed
+      - name: Verify all jobs passed
         run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "One or more test scopes failed."
+          if [ "${{ needs.lint.result }}" != "success" ] || [ "${{ needs.test.result }}" != "success" ]; then
+            echo "One or more CI jobs failed."
             exit 1
           fi
-          echo "All test scopes passed."
+          echo "All CI jobs passed."
