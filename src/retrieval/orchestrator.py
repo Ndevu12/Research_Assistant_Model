@@ -22,7 +22,12 @@ from ..research.query_understanding import QueryUnderstandingStage
 from ..research.ranking import RankingStage
 from ..research.relevance_scoring import RelevanceScoringStage
 from ..retrieval.deduplication import DeduplicationStage
-from ..retrieval.models import EnhancedResearchReport, RankedPaper, RetrievedPaper
+from ..retrieval.models import (
+    EnhancedResearchReport,
+    ExpandedQuerySet,
+    RankedPaper,
+    RetrievedPaper,
+)
 from ..retrieval.retrieval_stage import RetrievalStage
 from ..utils.message_formatter import MessageFormatter
 from ..utils.progress_reporter import (
@@ -52,6 +57,21 @@ def build_pipeline(settings: AppSettings) -> ResearchPipeline:
     )
 
 
+def _resolve_expanded_queries(result: ResearchPipelineResult, query: str) -> list[str]:
+    """Collect expanded query variants generated during the run."""
+    artifact = result.artifacts.get("expanded_queries")
+    if isinstance(artifact, ExpandedQuerySet):
+        expanded = [*artifact.variants, *artifact.sub_questions]
+    elif isinstance(artifact, dict):
+        expanded = [
+            *artifact.get("variants", []),
+            *artifact.get("sub_questions", []),
+        ]
+    else:
+        expanded = []
+    return [item for item in dict.fromkeys(expanded) if item and item != query]
+
+
 def _resolve_report(result: ResearchPipelineResult, query: str) -> EnhancedResearchReport:
     report = result.output
     if isinstance(report, EnhancedResearchReport):
@@ -74,7 +94,7 @@ async def _persist_memory(
     enabled_providers = [name for name, cfg in settings.retrieval.providers.items() if cfg.enabled]
     cache_key = build_cache_key(query, enabled_providers, build_config_hash(settings))
 
-    expanded: list[str] = []
+    expanded = _resolve_expanded_queries(result, query)
     search_id = await store.save_search(
         session.id,
         query,
