@@ -80,15 +80,18 @@ async def test_search_query_continues_when_one_provider_fails() -> None:
 
     async with aiohttp.ClientSession() as session:
         with patch(
-            "src.retrieval.retrieval_stage.get_enabled_providers",
+            "src.retrieval.providers.registry.get_enabled_providers",
             return_value=providers,
         ):
-            query, papers, warnings = await _search_query(session, "transformers", settings)
+            query, papers, warnings, failed = await _search_query(
+                session, "transformers", settings
+            )
 
     assert query == "transformers"
     assert len(papers) == 1
     assert papers[0].title == "OpenAlex Paper"
     assert any("failing_provider" in warning for warning in warnings)
+    assert failed == {"failing_provider"}
 
 
 @pytest.mark.asyncio
@@ -98,13 +101,14 @@ async def test_search_query_returns_empty_when_all_providers_fail() -> None:
 
     async with aiohttp.ClientSession() as session:
         with patch(
-            "src.retrieval.retrieval_stage.get_enabled_providers",
+            "src.retrieval.providers.registry.get_enabled_providers",
             return_value=providers,
         ):
-            _, papers, warnings = await _search_query(session, "biology", settings)
+            _, papers, warnings, failed = await _search_query(session, "biology", settings)
 
     assert papers == []
     assert len(warnings) == 2
+    assert failed == {"failing_provider"}
 
 
 @pytest.mark.asyncio
@@ -118,14 +122,17 @@ async def test_retrieve_papers_merges_successful_provider_results() -> None:
 
     async with aiohttp.ClientSession() as session:
         with patch(
-            "src.retrieval.retrieval_stage.get_enabled_providers",
+            "src.retrieval.providers.registry.get_enabled_providers",
             return_value=providers,
         ):
-            papers, warnings = await retrieve_papers(expanded, settings, session)
+            papers, warnings, providers_failed = await retrieve_papers(
+                expanded, settings, session
+            )
 
     assert len(papers) == 1
     assert papers[0].title == "Paper A"
     assert warnings
+    assert providers_failed == ["failing_provider"]
 
 
 @pytest.mark.asyncio
@@ -140,7 +147,7 @@ async def test_retrieval_stage_marks_partial_when_provider_fails() -> None:
     ]
 
     with patch(
-        "src.retrieval.retrieval_stage.get_enabled_providers",
+        "src.retrieval.providers.registry.get_enabled_providers",
         return_value=providers,
     ):
         result = await stage.run(ctx, expanded)
@@ -164,7 +171,7 @@ async def test_retrieval_stage_not_partial_when_all_providers_succeed() -> None:
     ]
 
     with patch(
-        "src.retrieval.retrieval_stage.get_enabled_providers",
+        "src.retrieval.providers.registry.get_enabled_providers",
         return_value=providers,
     ):
         result = await stage.run(ctx, expanded)
@@ -212,7 +219,7 @@ async def test_pipeline_continues_after_retrieval_provider_failure() -> None:
             return StageResult(output=f"processed:{len(data)}", duration_ms=1.0)
 
     with patch(
-        "src.retrieval.retrieval_stage.get_enabled_providers",
+        "src.retrieval.providers.registry.get_enabled_providers",
         return_value=providers,
     ):
         pipeline = ResearchPipeline(
