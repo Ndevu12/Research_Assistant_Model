@@ -16,14 +16,6 @@ if TYPE_CHECKING:
     from ..config.settings import EmbeddingConfig
 
 
-def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    a_norm = np.linalg.norm(a)
-    b_norm = np.linalg.norm(b)
-    if a_norm == 0.0 or b_norm == 0.0:
-        return 0.0
-    return float(np.dot(a, b) / (a_norm * b_norm))
-
-
 class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
     """Embedding provider backed by ``sentence-transformers``."""
 
@@ -79,9 +71,6 @@ class SentenceTransformerEmbeddingProvider(EmbeddingProvider):
             output[index] = encoded[row]
 
         return output
-
-    def similarity(self, a: np.ndarray, b: np.ndarray) -> float:
-        return _cosine_similarity(a, b)
 
 
 def create_embedding_provider(

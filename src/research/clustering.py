@@ -15,30 +15,10 @@ from ..core.paper_adapters import ensure_ranked_papers
 from ..embeddings.base import EmbeddingProvider
 from ..retrieval.models import PaperCluster, RankedPaper
 from .embedding_context import get_paper_embeddings
+from .text_utils import LABEL_STOP_WORDS
 
 if TYPE_CHECKING:
     from ..config.settings import ClusteringConfig
-
-_STOP_WORDS = {
-    "the",
-    "a",
-    "an",
-    "and",
-    "or",
-    "but",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "of",
-    "with",
-    "by",
-    "using",
-    "based",
-    "via",
-    "from",
-}
 
 
 def _paper_text(paper: RankedPaper) -> str:
@@ -52,7 +32,7 @@ def _label_cluster(papers: list[RankedPaper]) -> tuple[str, str]:
     words: list[str] = []
     for ranked in papers:
         tokens = re.findall(r"\b[a-z]{4,}\b", ranked.paper.title.lower())
-        words.extend(token for token in tokens if token not in _STOP_WORDS)
+        words.extend(token for token in tokens if token not in LABEL_STOP_WORDS)
 
     if not words:
         return "General", "Related papers grouped by embedding similarity."
@@ -91,13 +71,22 @@ def _fallback_single_cluster(papers: list[RankedPaper]) -> list[PaperCluster]:
 
 def _extract_tokens(text: str) -> list[str]:
     tokens = re.findall(r"\b[a-z]{4,}\b", text.lower())
-    return [token for token in tokens if token not in _STOP_WORDS]
+    return [token for token in tokens if token not in LABEL_STOP_WORDS]
 
 
 def _macro_cluster_count(noise_count: int, config: ClusteringConfig) -> int:
     if noise_count <= 1:
         return noise_count
     return min(config.max_macro_clusters, noise_count)
+
+
+def _macro_cluster(papers: list[RankedPaper]) -> PaperCluster:
+    theme, summary = _label_cluster(papers)
+    return PaperCluster(
+        theme=f"Theme: {theme}",
+        summary=summary,
+        paper_ids=[paper.paper.paper_id for paper in papers],
+    )
 
 
 def _merge_noise_into_macro_clusters(
@@ -109,26 +98,12 @@ def _merge_noise_into_macro_clusters(
         return []
 
     if len(noise_papers) == 1:
-        theme, summary = _label_cluster(noise_papers)
-        return [
-            PaperCluster(
-                theme=f"Theme: {theme}",
-                summary=summary,
-                paper_ids=[noise_papers[0].paper.paper_id],
-            )
-        ]
+        return [_macro_cluster(noise_papers)]
 
     doc_tokens = [_extract_tokens(_paper_text(paper)) for paper in noise_papers]
     vocabulary = sorted({token for tokens in doc_tokens for token in tokens})
     if not vocabulary:
-        theme, summary = _label_cluster(noise_papers)
-        return [
-            PaperCluster(
-                theme=f"Theme: {theme}",
-                summary=summary,
-                paper_ids=[paper.paper.paper_id for paper in noise_papers],
-            )
-        ]
+        return [_macro_cluster(noise_papers)]
 
     term_index = {term: index for index, term in enumerate(vocabulary)}
     matrix = np.zeros((len(noise_papers), len(vocabulary)), dtype=np.float32)
@@ -139,44 +114,20 @@ def _merge_noise_into_macro_clusters(
 
     cluster_count = _macro_cluster_count(len(noise_papers), config)
     if cluster_count <= 1:
-        theme, summary = _label_cluster(noise_papers)
-        return [
-            PaperCluster(
-                theme=f"Theme: {theme}",
-                summary=summary,
-                paper_ids=[paper.paper.paper_id for paper in noise_papers],
-            )
-        ]
+        return [_macro_cluster(noise_papers)]
 
     try:
         from sklearn.cluster import KMeans
 
         labels = KMeans(n_clusters=cluster_count, random_state=0, n_init=10).fit_predict(matrix)
     except Exception:
-        theme, summary = _label_cluster(noise_papers)
-        return [
-            PaperCluster(
-                theme=f"Theme: {theme}",
-                summary=summary,
-                paper_ids=[paper.paper.paper_id for paper in noise_papers],
-            )
-        ]
+        return [_macro_cluster(noise_papers)]
 
     grouped: dict[int, list[RankedPaper]] = {}
     for index, label in enumerate(labels):
         grouped.setdefault(int(label), []).append(noise_papers[index])
 
-    output: list[PaperCluster] = []
-    for group in grouped.values():
-        theme, summary = _label_cluster(group)
-        output.append(
-            PaperCluster(
-                theme=f"Theme: {theme}",
-                summary=summary,
-                paper_ids=[paper.paper.paper_id for paper in group],
-            )
-        )
-    return output
+    return [_macro_cluster(group) for group in grouped.values()]
 
 
 def cluster_papers(
