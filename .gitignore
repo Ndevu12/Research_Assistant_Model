@@ -66,3 +66,4 @@ pytest_cache/
 # MkDocs build output
 site/
 .cache/
+.gitignore
