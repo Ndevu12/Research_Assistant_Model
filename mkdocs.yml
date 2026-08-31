@@ -112,6 +112,7 @@ nav:
       - development/import-conventions.md
       - development/extensibility.md
       - development/publishing.md
+      - development/roadmap.md
       - contributing.md
   - Reference:
       - reference/canonical-sources.md
