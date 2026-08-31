@@ -13,6 +13,7 @@ import numpy as np
 from ..core.context import PipelineContext, StageResult
 from ..embeddings.base import EmbeddingProvider
 from ..research.metadata_sanity import metadata_quality_key, sanitize_papers_metadata
+from ..research.metadata_verification import reconcile_duplicate_cluster
 from .models import RetrievedPaper
 
 if TYPE_CHECKING:
@@ -42,8 +43,8 @@ def _union_find_merge(parent: list[int], left: int, right: int) -> None:
 
 
 def _select_best_duplicate(candidates: list[RetrievedPaper]) -> RetrievedPaper:
-    """Keep the highest-quality record from a duplicate cluster."""
-    return max(candidates, key=metadata_quality_key)
+    """Reconcile a duplicate cluster into one cross-verified record."""
+    return reconcile_duplicate_cluster(candidates)
 
 
 def dedupe_by_metadata(papers: list[RetrievedPaper]) -> list[RetrievedPaper]:
