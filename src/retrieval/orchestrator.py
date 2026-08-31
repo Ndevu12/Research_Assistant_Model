@@ -234,6 +234,8 @@ async def run_research_helper(
         }
     )
 
+    from ..utils import console as ui
+
     try:
         report, result = await run_research_with_result(
             user_text,
@@ -243,11 +245,11 @@ async def run_research_helper(
             stream_progress=stream_progress,
         )
     except Exception as exc:
-        print(MessageFormatter.network_error(str(exc)))
+        ui.print_error(MessageFormatter.network_error(str(exc)))
         return None
 
     if not report.papers and not result.partial:
-        print(MessageFormatter.no_results_message())
+        ui.print_notice(MessageFormatter.no_results_message())
         return report if return_report else None
 
     rendered = render_report_output(
@@ -264,17 +266,17 @@ async def run_research_helper(
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(rendered, encoding="utf-8")
-        print(f"Report written to {path.resolve()}")
+        ui.print_notice(f"Report written to {path.resolve()}")
         if output_format == "pdf":
-            print(
+            ui.print_notice(
                 "PDF-ready HTML saved. Open in a browser and use Print → Save as PDF."
             )
     else:
         if output_format in {"html", "pdf"}:
-            print(
+            ui.print_notice(
                 "Tip: use --output report.html with --format pdf to save print-ready HTML."
             )
-        print(rendered)
+        ui.print_report(rendered, output_format)
 
     if export_formats:
         from ..export import generate_citation_exports
@@ -289,7 +291,7 @@ async def run_research_helper(
             for fmt in export_formats:
                 content = exports.get(fmt)
                 if content:
-                    print(f"\n--- {fmt.upper()} Export ---\n{content}")
+                    ui.print_citation_export(fmt, content)
 
     if return_report:
         return report
