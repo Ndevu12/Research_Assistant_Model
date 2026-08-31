@@ -7,6 +7,12 @@ and validating their input in interactive mode.
 
 from .message_formatter import MessageFormatter
 
+try:
+    # Enables arrow-key line editing and in-session history for input().
+    import readline  # noqa: F401
+except ImportError:  # pragma: no cover - unavailable on some platforms
+    readline = None
+
 
 def get_user_query() -> str | None:
     """Prompt user for a research query and validate input.

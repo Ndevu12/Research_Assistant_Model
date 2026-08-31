@@ -11,14 +11,15 @@ Run with:
 
 import argparse
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
 from .memory.session import InteractiveResearchSession, follow_up_help_text
 from .retrieval.orchestrator import run_research_helper
+from .utils import console as ui
 from .utils.input_handler import get_user_query
-from .utils.message_formatter import MessageFormatter
-from .utils.logging_system import logger
+from .utils.logging_system import logger, set_console_log_level
 
 
 def ensure_setup() -> bool:
@@ -137,11 +138,7 @@ def run_interactive_mode(
     stream_progress: bool = True,
 ) -> None:
     """Run the research assistant in interactive mode with session support."""
-    print(MessageFormatter.welcome_message())
-    print(
-        "\nSession follow-ups (after your first query):\n"
-        f"{follow_up_help_text()}\n"
-    )
+    ui.print_welcome(follow_up_help_text())
 
     session = InteractiveResearchSession()
     asyncio.run(_initialize_session(session))
@@ -161,8 +158,8 @@ def run_interactive_mode(
                 )
             )
             if follow_up is not None:
-                print(follow_up)
-                print(MessageFormatter.result_separator())
+                ui.print_report(follow_up, output_format)
+                ui.print_result_separator()
                 continue
 
             rendered = asyncio.run(
@@ -174,21 +171,23 @@ def run_interactive_mode(
                     stream_progress=stream_progress,
                 )
             )
-            print(rendered)
-            print(MessageFormatter.result_separator())
+            ui.print_report(rendered, output_format)
+            ui.print_result_separator()
 
     except KeyboardInterrupt:
         print()
 
     finally:
-        print(MessageFormatter.farewell_message())
+        ui.print_farewell()
 
 
 def main() -> None:
     """Main entry point for the CLI."""
-    if not ensure_setup():
-        logger.error("Cannot proceed without completing setup")
-        sys.exit(1)
+    if sys.stderr.isatty():
+        # Readable tracebacks for unexpected crashes; plain output when piped.
+        from rich.traceback import install as install_rich_tracebacks
+
+        install_rich_tracebacks(show_locals=False)
 
     parser = argparse.ArgumentParser(
         description="AI Research Assistant - Retrieve and analyze academic papers",
@@ -226,7 +225,21 @@ def main() -> None:
         action="store_true",
         help="Disable live progress streaming on stderr",
     )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show INFO-level logs on the console (full detail is always in logs/)",
+    )
     args = parser.parse_args()
+
+    if getattr(args, "verbose", False):
+        set_console_log_level(logging.INFO)
+
+    # Setup runs after parsing so --help and bad arguments never trigger it.
+    if not ensure_setup():
+        logger.error("Cannot proceed without completing setup")
+        sys.exit(1)
 
     export_formats = _parse_export_formats(getattr(args, "export_formats", None))
     output_format = getattr(args, "format", "markdown")
