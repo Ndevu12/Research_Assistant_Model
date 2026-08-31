@@ -22,9 +22,13 @@ Usage:
 
 import logging
 import logging.handlers
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
+
+from rich.console import Console
+from rich.logging import RichHandler
 
 
 class ApplicationLogger(logging.Logger):
@@ -207,12 +211,42 @@ def _setup_logger(
     events_handler.addFilter(EventFilter())
     logger_instance.addHandler(events_handler)
     
-    # Console handler (optional, can be disabled if needed)
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
+    # Console handler: quiet by default so pipeline output stays readable.
+    # Full INFO/DEBUG detail always goes to the log files above; the console
+    # only shows warnings and errors unless verbosity is raised explicitly
+    # (--verbose flag, RA_CONSOLE_LOG_LEVEL, or RA_DEBUG).
+    console_handler = RichHandler(
+        console=Console(stderr=True),
+        show_time=False,
+        show_path=False,
+        rich_tracebacks=True,
+        markup=False,
+    )
+    console_handler.setLevel(_default_console_level())
     logger_instance.addHandler(console_handler)
-    
+    global _console_handler
+    _console_handler = console_handler
+
     return logger_instance
+
+
+_console_handler: logging.Handler | None = None
+
+
+def _default_console_level() -> int:
+    """Resolve the console log level from the environment."""
+    override = os.environ.get("RA_CONSOLE_LOG_LEVEL", "").strip().upper()
+    if override in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+        return getattr(logging, override)
+    if os.environ.get("RA_DEBUG", "").strip().lower() in {"1", "true", "yes"}:
+        return logging.DEBUG
+    return logging.WARNING
+
+
+def set_console_log_level(level: int) -> None:
+    """Change how much log detail reaches the console (files are unaffected)."""
+    if _console_handler is not None:
+        _console_handler.setLevel(level)
 
 
 # Initialize the global logger instance
