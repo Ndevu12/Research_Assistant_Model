@@ -31,6 +31,7 @@ STAGE_LABELS: dict[str, str] = {
     "retrieval": "Retrieving papers from scholarly APIs",
     "deduplication": "Removing duplicate papers",
     "ranking": "Ranking papers by relevance",
+    "snowball": "Following citation trails",
     "relevance_scoring": "Scoring semantic relevance",
     "clustering": "Grouping papers by theme",
     "synthesis": "Synthesizing cross-paper insights",

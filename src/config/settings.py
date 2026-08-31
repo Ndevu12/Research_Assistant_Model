@@ -149,6 +149,17 @@ class RetrievalConfig(BaseModel):
     )
 
 
+class SnowballConfig(BaseModel):
+    """Citation-graph expansion around top-ranked papers."""
+
+    enabled: bool = True
+    max_seed_papers: int = 5
+    per_seed_citations: int = 5
+    max_reference_fetch: int = 25
+    max_new_papers: int = 30
+    request_timeout_seconds: int = 30
+
+
 class PipelineConfig(BaseModel):
     continue_on_stage_failure: bool = True
     stage_timeout_seconds: int = 300
@@ -162,6 +173,7 @@ class PipelineConfig(BaseModel):
             "retrieval": True,
             "deduplication": True,
             "ranking": True,
+            "snowball": True,
             "relevance_scoring": True,
             "clustering": True,
             "synthesis": True,
@@ -239,6 +251,7 @@ class AppSettings(BaseSettings):
     clustering: ClusteringConfig = Field(default_factory=ClusteringConfig)
     relevance_scoring: RelevanceScoringConfig = Field(default_factory=RelevanceScoringConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    snowball: SnowballConfig = Field(default_factory=SnowballConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     synthesis: SynthesisConfig = Field(default_factory=SynthesisConfig)
