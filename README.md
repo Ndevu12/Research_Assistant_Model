@@ -64,6 +64,9 @@ pipenv run python -m src --format json --export bibtex,apa "your query"
 | `--output`, `-o` | Write the report to a file |
 | `--session` | Enable SQLite session memory in batch mode |
 | `--no-progress` | Disable live progress streaming on stderr |
+| `--verbose`, `-v` | Show INFO-level logs on the console (full detail is always in `logs/`) |
+
+On an interactive terminal, reports render with formatted headings, bullets, and syntax-highlighted JSON; piped or redirected output stays plain text, so `python -m src "query" > report.md` works unchanged.
 
 Setup and health checks can also be run directly — see [setups/README.md](setups/README.md):
 
@@ -89,6 +92,7 @@ Common settings:
 | `RA_PIPELINE__STREAM_PROGRESS` | `true` | Live stage/LLM progress on stderr |
 | `RA_PIPELINE__DEBUG` | `false` | Verbose pipeline logging |
 | `RA_SKIP_SETUP_CHECK` | — | Skip the Ollama setup/health check on startup |
+| `RA_CONSOLE_LOG_LEVEL` | `WARNING` | Log level shown on the console (files always get full detail) |
 | `S2_API_KEY` | — | Semantic Scholar API key (higher rate limits) |
 | `RA_CROSSREF_MAILTO` | — | Email for the CrossRef polite pool |
 
