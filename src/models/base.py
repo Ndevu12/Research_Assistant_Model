@@ -38,7 +38,10 @@ ROLE_SYSTEM_PROMPTS: dict[AgentRole, str] = {
         "Extract structured information from a single paper and respond with ONLY a JSON object "
         'with keys: "paper_id" (string), "title" (string), "methodology" (list of strings), '
         '"datasets" (list of strings), "benchmarks" (list of strings), '
-        '"limitations" (list of strings), "findings" (list of strings). '
+        '"limitations" (list of strings), "findings" (list of strings), '
+        '"evidence" (list of strings). '
+        "When full-text passages are provided, evidence must contain short verbatim quotes "
+        "from those passages that support the findings; otherwise leave evidence empty. "
         "Do not include conversational filler or markdown."
     ),
     AgentRole.SYNTHESIS: (

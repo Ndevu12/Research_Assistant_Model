@@ -114,7 +114,21 @@ def _detect_conflicting_findings(extractions: list[PaperExtraction]) -> list[str
     return list(dict.fromkeys(conflicts))[:3]
 
 
-def _heuristic_extraction(paper: RankedPaper) -> PaperExtraction:
+def _evidence_from_passages(passages: list[str] | None, limit: int = 2) -> list[str]:
+    """Trim grounded passages into short verbatim evidence quotes."""
+    if not passages:
+        return []
+    quotes: list[str] = []
+    for passage in passages[:limit]:
+        cleaned = " ".join(passage.split())
+        quotes.append(cleaned[:300] + ("…" if len(cleaned) > 300 else ""))
+    return quotes
+
+
+def _heuristic_extraction(
+    paper: RankedPaper,
+    passages: list[str] | None = None,
+) -> PaperExtraction:
     """Build a fallback extraction when the LLM pass is unavailable."""
     abstract = paper.paper.abstract or ""
     sentences = [part.strip() for part in abstract.split(".") if part.strip()]
@@ -126,14 +140,21 @@ def _heuristic_extraction(paper: RankedPaper) -> PaperExtraction:
     if not datasets and abstract:
         datasets = ["Not explicitly stated in abstract"]
 
+    source_note = (
+        ["Details inferred from abstract and full-text passages"]
+        if passages
+        else ["Details inferred from abstract only"]
+    )
+
     return PaperExtraction(
         paper_id=paper.paper.paper_id,
         title=paper.paper.title,
-        methodology=["Details inferred from abstract only"],
+        methodology=source_note,
         datasets=datasets,
         benchmarks=[],
         limitations=limitations,
         findings=findings,
+        evidence=_evidence_from_passages(passages),
     )
 
 
@@ -183,17 +204,33 @@ def _heuristic_synthesis(
     )
 
 
-def _build_extraction_prompt(paper: RankedPaper, query: str) -> str:
+def _build_extraction_prompt(
+    paper: RankedPaper,
+    query: str,
+    passages: list[str] | None = None,
+) -> str:
     abstract = paper.paper.abstract or "No abstract available."
-    return (
+    prompt = (
         f"Research query: {query}\n\n"
         f"Paper ID: {paper.paper.paper_id}\n"
         f"Title: {paper.paper.title}\n"
         f"Year: {paper.paper.year or 'unknown'}\n"
         f"Venue: {paper.paper.venue or 'unknown'}\n"
-        f"Abstract: {abstract[:1200]}\n\n"
-        "Extract methodology, datasets, benchmarks, limitations, and findings."
+        f"Abstract: {abstract[:1200]}\n"
     )
+    if passages:
+        numbered = "\n\n".join(
+            f"[Passage {index}] {passage[:1500]}"
+            for index, passage in enumerate(passages, start=1)
+        )
+        prompt += (
+            f"\nFull-text passages retrieved for this query:\n{numbered}\n\n"
+            "Ground the extraction in these passages and quote short verbatim "
+            "evidence snippets from them."
+        )
+    else:
+        prompt += "\nExtract methodology, datasets, benchmarks, limitations, and findings."
+    return prompt
 
 
 def _build_synthesis_prompt(
@@ -244,6 +281,7 @@ def _extractions_to_paper_analyses(
                 doi=source.doi if source else None,
                 key_points=extraction.findings,
                 why_relevant=extraction.methodology,
+                evidence=extraction.evidence,
             )
         )
     return analyses
@@ -285,7 +323,11 @@ def recover_synthesis_output(
             )
 
     resolved_clusters = clusters or ctx.get_artifact("paper_clusters") or []
-    extractions = [_heuristic_extraction(paper) for paper in ranked_papers]
+    recovery_passages: dict[str, list[str]] = ctx.get_artifact("fulltext_passages") or {}
+    extractions = [
+        _heuristic_extraction(paper, recovery_passages.get(paper.paper.paper_id))
+        for paper in ranked_papers
+    ]
     synthesis = _heuristic_synthesis(
         ctx.query,
         extractions,
@@ -307,8 +349,9 @@ async def _extract_single_paper(
     agent: Agent,
     handler: EnhancedResponseHandler,
     context: RequestContext,
+    passages: list[str] | None = None,
 ) -> tuple[PaperExtraction, bool]:
-    prompt = _build_extraction_prompt(paper, query)
+    prompt = _build_extraction_prompt(paper, query, passages)
     result = await handler.process_structured_response(
         agent,
         prompt,
@@ -317,12 +360,17 @@ async def _extract_single_paper(
         schema_description=(
             '{"paper_id": "...", "title": "...", "methodology": ["..."], '
             '"datasets": ["..."], "benchmarks": ["..."], '
-            '"limitations": ["..."], "findings": ["..."]}'
+            '"limitations": ["..."], "findings": ["..."], "evidence": ["..."]}'
         ),
     )
     if result.success and isinstance(result.data, PaperExtraction):
-        return result.data, True
-    return _heuristic_extraction(paper), False
+        extraction = result.data
+        if not extraction.evidence and passages:
+            extraction = extraction.model_copy(
+                update={"evidence": _evidence_from_passages(passages)}
+            )
+        return extraction, True
+    return _heuristic_extraction(paper, passages), False
 
 
 async def extract_papers(
@@ -334,10 +382,16 @@ async def extract_papers(
     concurrency: int = 4,
     session_id: str = "",
     synthesis_config: SynthesisConfig | None = None,
+    passages: dict[str, list[str]] | None = None,
 ) -> list[PaperExtraction]:
-    """Pass A — structured extraction for each ranked paper."""
+    """Pass A — structured extraction for each ranked paper.
+
+    ``passages`` maps paper IDs to query-relevant full-text passages from the
+    fulltext stage; when present they ground both LLM and heuristic paths.
+    """
     if not ranked_papers:
         return []
+    passages = passages or {}
 
     if synthesis_config is None:
         from ..config.settings import get_settings
@@ -349,7 +403,10 @@ async def extract_papers(
             "Using heuristic paper extraction for %d paper(s) (synthesis.llm_enabled=false)",
             len(ranked_papers),
         )
-        return [_heuristic_extraction(paper) for paper in ranked_papers]
+        return [
+            _heuristic_extraction(paper, passages.get(paper.paper.paper_id))
+            for paper in ranked_papers
+        ]
 
     max_llm_papers = max(1, synthesis_config.max_llm_papers)
     llm_targets = ranked_papers[:max_llm_papers]
@@ -372,8 +429,9 @@ async def extract_papers(
 
     async def _extract_with_circuit(index: int, paper: RankedPaper) -> PaperExtraction:
         async with semaphore:
+            paper_passages = passages.get(paper.paper.paper_id)
             if breaker["open"]:
-                return _heuristic_extraction(paper)
+                return _heuristic_extraction(paper, paper_passages)
 
             title_preview = paper.paper.title[:72]
             logger.info(
@@ -395,6 +453,7 @@ async def extract_papers(
                 agent,
                 response_handler,
                 context,
+                passages=paper_passages,
             )
 
         if llm_success:
@@ -424,7 +483,10 @@ async def extract_papers(
         )
     )
 
-    heuristic_extractions = [_heuristic_extraction(paper) for paper in heuristic_targets]
+    heuristic_extractions = [
+        _heuristic_extraction(paper, passages.get(paper.paper.paper_id))
+        for paper in heuristic_targets
+    ]
     return llm_extractions + heuristic_extractions
 
 
@@ -503,6 +565,7 @@ async def run_synthesis(
     concurrency: int = 4,
     session_id: str = "",
     synthesis_config: SynthesisConfig | None = None,
+    passages: dict[str, list[str]] | None = None,
 ) -> tuple[SynthesisResult, list[PaperExtraction], list[PaperAnalysis]]:
     """Run the full two-pass synthesis workflow."""
     if synthesis_config is None:
@@ -518,6 +581,7 @@ async def run_synthesis(
         concurrency=synthesis_config.concurrency or concurrency,
         session_id=session_id,
         synthesis_config=synthesis_config,
+        passages=passages,
     )
     synthesis = await synthesize_collective(
         query,
@@ -592,6 +656,7 @@ class SynthesisStage:
                 ctx.query,
                 ranked_papers,
                 data,
+                passages=ctx.get_artifact("fulltext_passages") or {},
                 llm_config=ctx.config.llm,
                 handler=self.handler,
                 concurrency=ctx.config.synthesis.concurrency,

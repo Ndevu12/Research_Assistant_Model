@@ -81,6 +81,14 @@ def _render_thematic_findings(
                 lines.extend(["", "Key points:", *_bullet_lines(paper.key_points)])
             if paper.why_relevant:
                 lines.extend(["", "Why relevant:", *_bullet_lines(paper.why_relevant)])
+            if paper.evidence:
+                lines.extend(
+                    [
+                        "",
+                        "Evidence (from full text):",
+                        *[f"> {quote}" for quote in paper.evidence],
+                    ]
+                )
             lines.append("")
 
     return lines
