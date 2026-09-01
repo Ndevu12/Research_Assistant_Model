@@ -78,7 +78,12 @@ def _render_thematic_findings(
                 lines.append(meta)
             lines.append(f"Source: {_format_paper_source(paper)}")
             if paper.key_points:
-                lines.extend(["", "Key points:", *_bullet_lines(paper.key_points)])
+                unverified = set(paper.unverified_points)
+                point_lines = [
+                    f"- {point} _(unverified)_" if point in unverified else f"- {point}"
+                    for point in paper.key_points
+                ]
+                lines.extend(["", "Key points:", *point_lines])
             if paper.why_relevant:
                 lines.extend(["", "Why relevant:", *_bullet_lines(paper.why_relevant)])
             if paper.evidence:
@@ -149,6 +154,16 @@ def render_enhanced_markdown(
     else:
         lines.append(f"Literature review for: **{report.query}**")
     lines.append("")
+
+    if report.verification and report.verification.claims_checked:
+        verification = report.verification
+        lines.append(
+            f"_Claim verification ({verification.method}): "
+            f"{verification.claims_supported}/{verification.claims_checked} "
+            "key points supported by paper sources; unsupported points are "
+            "marked (unverified) below._"
+        )
+        lines.append("")
 
     lines.extend(["# Research Query & Scope", "", f"**Query:** {report.query}", ""])
 
