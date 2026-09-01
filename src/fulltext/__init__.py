@@ -1,18 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Full-text ingestion architecture (Phase 3 interfaces only)."""
+"""Full-text ingestion: PDF resolution, parsing, chunking, and retrieval."""
 
 from .base import FullTextChunk, FullTextDocument, PDFDownloader, RAGIndex, TextChunker
-from .chunker import StubTextChunker
-from .downloader import StubPDFDownloader
-from .rag import StubRAGIndex
+from .chunker import SectionAwareChunker
+from .downloader import CachingPDFDownloader
+from .rag import InMemoryFulltextIndex
+from .resolver import resolve_pdf_url
+from .stage import FulltextStage
 
 __all__ = [
+    "CachingPDFDownloader",
     "FullTextChunk",
     "FullTextDocument",
+    "FulltextStage",
+    "InMemoryFulltextIndex",
     "PDFDownloader",
     "RAGIndex",
-    "StubPDFDownloader",
-    "StubRAGIndex",
-    "StubTextChunker",
+    "SectionAwareChunker",
     "TextChunker",
+    "resolve_pdf_url",
 ]
