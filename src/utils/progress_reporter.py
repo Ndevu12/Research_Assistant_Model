@@ -12,7 +12,13 @@ from pydantic_ai import Agent
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 from rich.text import Text
 
@@ -74,6 +80,7 @@ class PipelineProgressReporter:
     _progress: Progress | None = field(default=None, init=False, repr=False)
     _stage_task_id: int | None = field(default=None, init=False, repr=False)
     _completed: list[tuple[str, float, bool]] = field(default_factory=list, init=False, repr=False)
+    _stage_metrics: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
     _current_stage: str = field(default="", init=False, repr=False)
     _activity: str = field(default="", init=False, repr=False)
     _llm_preview: str = field(default="", init=False, repr=False)
@@ -98,6 +105,7 @@ class PipelineProgressReporter:
             TextColumn("[bold cyan]{task.description}"),
             BarColumn(bar_width=36),
             TextColumn("{task.completed}/{task.total}"),
+            TimeElapsedColumn(),
             console=self._console,
             transient=False,
         )
@@ -126,8 +134,41 @@ class PipelineProgressReporter:
         status = "[yellow]partial[/yellow]" if partial else "[green]complete[/green]"
         self._console.print(
             f"\n[bold]Pipeline {status}[/bold] "
-            f"({len(self._completed)} stages, {elapsed / 1000:.1f}s)\n"
+            f"({len(self._completed)} stages, {elapsed / 1000:.1f}s)"
         )
+        summary = self._run_summary()
+        if summary:
+            self._console.print(f"[dim]{summary}[/dim]")
+        self._console.print()
+
+    def _run_summary(self) -> str:
+        """One-line digest of what the run produced, from stage metrics."""
+        parts: list[str] = []
+
+        retrieval = self._stage_metrics.get("retrieval", {})
+        found = retrieval.get("papers_found")
+        if found is not None:
+            parts.append(f"{found} papers retrieved")
+
+        dedup = self._stage_metrics.get("deduplication", {})
+        removed = (dedup.get("metadata_removed") or 0) + (dedup.get("embedding_removed") or 0)
+        if removed:
+            parts.append(f"{removed} duplicates removed")
+
+        relevance = self._stage_metrics.get("relevance_scoring", {})
+        kept = relevance.get("papers_kept")
+        if kept is not None:
+            parts.append(f"{kept} kept after relevance filtering")
+
+        clusters = self._stage_metrics.get("clustering", {}).get("num_clusters")
+        if clusters:
+            parts.append(f"{clusters} theme{'s' if clusters != 1 else ''}")
+
+        failed = retrieval.get("providers_failed") or []
+        if failed:
+            parts.append(f"provider issues: {', '.join(failed)}")
+
+        return " · ".join(parts)
 
     def set_activity(self, message: str) -> None:
         """Update the sub-activity line (e.g. paper 2/5)."""
@@ -208,6 +249,8 @@ class PipelineProgressReporter:
         result: StageResult[Any],
     ) -> None:
         self._completed.append((stage_name, result.duration_ms, result.partial))
+        if result.metrics:
+            self._stage_metrics[stage_name] = dict(result.metrics)
         icon = "⚠" if result.partial else "✓"
         label = stage_label(stage_name)
         if self.enabled:
