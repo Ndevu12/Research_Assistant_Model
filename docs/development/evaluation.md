@@ -8,9 +8,10 @@ so it works identically on developer machines and in CI.
 
 ## Golden dataset
 
-`evals/golden_set.yaml` contains labeled queries across machine learning,
-biomedicine, natural language processing, and computer vision. Each query
-lists candidate papers with a graded relevance label:
+`evals/golden_set.yaml` contains fourteen labeled queries spanning machine
+learning, biomedicine, neuroscience, physics, speech, social science, and
+computer vision. Each query lists candidate papers with a graded relevance
+label:
 
 - `2` — highly relevant, the papers a domain expert would expect first
 - `1` — relevant supporting work
@@ -41,8 +42,8 @@ use, and its module entry point prints the per-query table.
 ## Regression floors in CI
 
 `tests/test_evaluation.py` asserts floor values below the measured
-keyword-only baseline (mean R@5 0.93, nDCG@10 0.98, MRR 1.00, validity
-96%). A change that drops the suite below a floor has genuinely hurt
+keyword-only baseline (with fourteen queries: mean R@5 0.94, nDCG@10 0.97,
+MRR 1.00, validity 92%). A change that drops the suite below a floor has genuinely hurt
 ranking quality and fails CI. When a deliberate improvement raises the
 baseline, tighten the floors in the same change so the new level becomes
 the protected one.
@@ -53,4 +54,8 @@ Add queries where the ranker currently struggles: multi-concept queries,
 fields outside machine learning, and queries whose relevant papers share
 few title words with the query. Keep labels honest — the harness is only as
 trustworthy as its dataset — and prefer real papers with verifiable
-metadata. Growing toward the roadmap's ~20 queries is an open task.
+metadata; entries whose DOI cannot be stated with confidence carry none
+rather than a guessed one. Growing toward the roadmap's ~20 queries
+remains open, as does a live mode that resolves DOIs against CrossRef.
+The module entry point accepts a JSON flag for automation, emitting
+per-query metrics plus means.
