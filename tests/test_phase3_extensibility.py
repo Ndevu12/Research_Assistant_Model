@@ -135,23 +135,38 @@ class TestPhase3ProviderStubs:
         assert paper.authors == ["Alice Author", "Bob Author"]
 
     @pytest.mark.asyncio
-    async def test_stub_provider_search_raises_not_implemented(self) -> None:
+    async def test_pubmed_search_returns_results_not_stub_error(self) -> None:
+        from unittest.mock import patch
+
         provider = PubMedProvider()
 
-        async with aiohttp.ClientSession() as session:
-            with pytest.raises(NotImplementedError, match="PubMed"):
-                await provider.search(session, "cancer immunotherapy")
+        async def fake_request(session, url, *, params=None, as_json=True, **kwargs):
+            if "esearch" in url:
+                return {"esearchresult": {"idlist": []}}
+            return ""
+
+        with patch.object(PubMedProvider, "_request_with_retry", side_effect=fake_request):
+            async with aiohttp.ClientSession() as session:
+                papers = await provider.search(session, "cancer immunotherapy")
+
+        assert papers == []
 
     @pytest.mark.asyncio
-    async def test_stub_provider_health_check_reports_unavailable(self) -> None:
+    async def test_dblp_health_check_reports_unreachable_api(self) -> None:
+        from unittest.mock import patch
+
         provider = DblpProvider()
 
-        async with aiohttp.ClientSession() as session:
-            health = await provider.health_check(session)
+        async def failing_request(*args, **kwargs):
+            raise aiohttp.ClientError("connection refused")
+
+        with patch.object(DblpProvider, "_request_with_retry", side_effect=failing_request):
+            async with aiohttp.ClientSession() as session:
+                health = await provider.health_check(session)
 
         assert health.healthy is False
         assert health.provider == "dblp"
-        assert "not yet implemented" in health.message.lower()
+        assert "connection refused" in health.message
 
 
 class TestFullTextScaffold:
