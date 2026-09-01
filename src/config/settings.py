@@ -150,6 +150,19 @@ class RetrievalConfig(BaseModel):
     )
 
 
+class FulltextConfig(BaseModel):
+    """Open-access full-text grounding for top-ranked papers."""
+
+    enabled: bool = True
+    max_papers: int = 5
+    max_pdf_mb: int = 15
+    request_timeout_seconds: int = 30
+    cache_dir: str = "data/fulltext"
+    chunk_chars: int = 1400
+    chunk_overlap: int = 200
+    top_chunks_per_paper: int = 3
+
+
 class RerankConfig(BaseModel):
     """Cross-encoder reranking of the top-ranked papers."""
 
@@ -186,6 +199,7 @@ class PipelineConfig(BaseModel):
             "snowball": True,
             "rerank": True,
             "relevance_scoring": True,
+            "fulltext": True,
             "clustering": True,
             "synthesis": True,
             "gap_analysis": True,
@@ -264,6 +278,7 @@ class AppSettings(BaseSettings):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     snowball: SnowballConfig = Field(default_factory=SnowballConfig)
     rerank: RerankConfig = Field(default_factory=RerankConfig)
+    fulltext: FulltextConfig = Field(default_factory=FulltextConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     synthesis: SynthesisConfig = Field(default_factory=SynthesisConfig)
