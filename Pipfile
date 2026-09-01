@@ -10,6 +10,7 @@ name = "pytorch-cpu"
 
 [packages]
 pydantic-ai = "*"
+pymupdf = {version = "*", index = "pypi"}
 aiohttp = "*"
 pydantic = "*"
 pytest = "*"

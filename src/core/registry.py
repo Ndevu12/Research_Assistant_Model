@@ -149,8 +149,8 @@ def bootstrap_default_plugins() -> None:
     for name, factory in stage_factories.items():
         _global_registry.register_stage(name, factory)
 
-    from ..fulltext.downloader import StubPDFDownloader
-    from ..fulltext.rag import StubRAGIndex
+    from ..fulltext.downloader import CachingPDFDownloader
+    from ..fulltext.rag import InMemoryFulltextIndex
 
-    _global_registry.register_fulltext_downloader("stub", StubPDFDownloader)
-    _global_registry.register_fulltext_index("stub", StubRAGIndex)
+    _global_registry.register_fulltext_downloader("default", CachingPDFDownloader)
+    _global_registry.register_fulltext_index("default", InMemoryFulltextIndex)
