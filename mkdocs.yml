@@ -76,6 +76,7 @@ nav:
           - architecture/stages/retrieval.md
           - architecture/stages/deduplication.md
           - architecture/stages/ranking.md
+          - architecture/stages/snowball.md
           - architecture/stages/relevance-scoring.md
           - architecture/stages/clustering.md
           - architecture/stages/synthesis.md
@@ -113,6 +114,7 @@ nav:
       - development/extensibility.md
       - development/publishing.md
       - development/roadmap.md
+      - development/evaluation.md
       - contributing.md
   - Reference:
       - reference/canonical-sources.md

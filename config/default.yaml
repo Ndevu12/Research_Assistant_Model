@@ -90,12 +90,21 @@ pipeline:
     retrieval: true
     deduplication: true
     ranking: true
+    snowball: true
     relevance_scoring: true
     clustering: true
     synthesis: true
     gap_analysis: true
     citation_export: true
     report_generation: true
+
+snowball:
+  enabled: true
+  max_seed_papers: 5
+  per_seed_citations: 5
+  max_reference_fetch: 25
+  max_new_papers: 30
+  request_timeout_seconds: 30
 
 memory:
   db_path: data/research.db
