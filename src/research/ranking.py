@@ -16,6 +16,7 @@ from ..core.context import PipelineContext, StageResult
 from ..embeddings.base import EmbeddingProvider
 from ..retrieval.models import RankedPaper, RetrievedPaper
 from .canonical_works import CanonicalWork, load_canonical_works, match_canonical_work
+from .bm25 import normalized_bm25_scores
 from .embedding_context import store_ranking_embedding_result
 from .metadata_sanity import sanitize_papers_metadata
 from .text_utils import GENERIC_QUERY_TERMS, extract_query_terms, term_matches_text
@@ -250,6 +251,7 @@ def score_paper(
     top_k_mean_embedding_sim: float | None = None,
     canonical_boost: float = 0.0,
     canonical_works: list[CanonicalWork] | None = None,
+    bm25_score: float | None = None,
 ) -> RankedPaper:
     query_terms = extract_query_terms(query)
     embedding_sim = signal_embedding_similarity(
@@ -273,6 +275,7 @@ def score_paper(
         "keyword_overlap": signal_keyword_overlap(paper, query_terms),
         "author_prominence": signal_author_prominence(paper),
         "embedding_similarity": embedding_sim,
+        "lexical_bm25": bm25_score,
     }
 
     available = {name: value for name, value in signals.items() if value is not None}
@@ -356,6 +359,7 @@ def rank_papers(
         for index, paper in enumerate(papers)
     ]
     top_k_mean_embedding_sim = _top_k_mean_embedding_similarity(embedding_sims)
+    bm25_scores = normalized_bm25_scores(query, [_paper_text(paper) for paper in papers])
 
     ranked = [
         score_paper(
@@ -372,6 +376,7 @@ def rank_papers(
             top_k_mean_embedding_sim=top_k_mean_embedding_sim,
             canonical_boost=config.canonical_boost,
             canonical_works=canonical_works,
+            bm25_score=bm25_scores[index],
         )
         for index, paper in enumerate(papers)
     ]
