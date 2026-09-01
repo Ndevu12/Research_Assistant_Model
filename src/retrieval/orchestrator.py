@@ -22,6 +22,7 @@ from ..research.query_understanding import QueryUnderstandingStage
 from ..research.ranking import RankingStage
 from ..research.relevance_scoring import RelevanceScoringStage
 from ..retrieval.deduplication import DeduplicationStage
+from ..retrieval.snowball import SnowballStage
 from ..retrieval.models import (
     EnhancedResearchReport,
     ExpandedQuerySet,
@@ -46,6 +47,7 @@ def build_pipeline(settings: AppSettings) -> ResearchPipeline:
             RetrievalStage(),
             DeduplicationStage(),
             RankingStage(),
+            SnowballStage(),
             RelevanceScoringStage(),
             ClusteringStage(),
             SynthesisStage(),
