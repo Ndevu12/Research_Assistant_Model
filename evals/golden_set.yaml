@@ -449,3 +449,552 @@ queries:
         citation_count: 20000
         abstract: >-
           Clipped-objective policy gradient methods for reinforcement learning.
+
+  - query: federated learning privacy preservation
+    domain: machine-learning
+    candidates:
+      - title: Communication-Efficient Learning of Deep Networks from Decentralized Data
+        relevance: 2
+        year: 2017
+        venue: AISTATS
+        doi: 10.48550/arXiv.1602.05629
+        citation_count: 15000
+        abstract: >-
+          Introduces federated averaging, training deep networks across
+          decentralized devices while keeping raw data local for privacy.
+      - title: Deep Learning with Differential Privacy
+        relevance: 2
+        year: 2016
+        venue: CCS
+        doi: 10.48550/arXiv.1607.00133
+        citation_count: 7000
+        abstract: >-
+          Trains neural networks under differential privacy with noisy SGD and
+          a moments accountant, bounding privacy loss during learning.
+      - title: "Advances and Open Problems in Federated Learning"
+        relevance: 1
+        year: 2021
+        doi: 10.48550/arXiv.1912.04977
+        citation_count: 5000
+        abstract: >-
+          Survey of federated learning systems, privacy mechanisms, robustness,
+          and open research problems across the field.
+      - title: "Federated Machine Learning: Concept and Applications"
+        relevance: 1
+        year: 2019
+        venue: ACM TIST
+        doi: 10.48550/arXiv.1902.04885
+        citation_count: 4000
+        abstract: >-
+          Categorizes horizontal, vertical, and transfer federated learning and
+          surveys privacy-preserving applications.
+      - title: Deep Residual Learning for Image Recognition
+        relevance: 0
+        year: 2016
+        venue: CVPR
+        doi: 10.48550/arXiv.1512.03385
+        citation_count: 150000
+        abstract: >-
+          Residual connections for very deep convolutional image recognition
+          networks.
+      - title: A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity
+        relevance: 0
+        year: 2012
+        venue: Science
+        doi: 10.1126/science.1225829
+        citation_count: 15000
+        abstract: >-
+          Cas9 programmed with guide RNA cleaves target DNA sites, founding
+          CRISPR genome editing.
+      - title: Mastering the Game of Go with Deep Neural Networks and Tree Search
+        relevance: 0
+        year: 2016
+        venue: Nature
+        doi: 10.1038/nature16961
+        citation_count: 18000
+        abstract: >-
+          Deep reinforcement learning with tree search masters the game of Go.
+      - title: "Longformer: The Long-Document Transformer"
+        relevance: 0
+        year: 2020
+        doi: 10.48550/arXiv.2004.05150
+        citation_count: 4000
+        abstract: >-
+          Sparse sliding-window attention for long documents.
+
+  - query: protein structure prediction deep learning
+    domain: biomedicine
+    candidates:
+      - title: Highly Accurate Protein Structure Prediction with AlphaFold
+        relevance: 2
+        year: 2021
+        venue: Nature
+        doi: 10.1038/s41586-021-03819-2
+        citation_count: 30000
+        abstract: >-
+          AlphaFold predicts protein three-dimensional structure from sequence
+          with atomic accuracy using attention-based deep learning over
+          evolutionary and geometric features.
+      - title: Improved Protein Structure Prediction Using Potentials from Deep Learning
+        relevance: 2
+        year: 2020
+        venue: Nature
+        doi: 10.1038/s41586-019-1923-7
+        citation_count: 5000
+        abstract: >-
+          Deep learning predicts inter-residue distance distributions whose
+          potentials guide protein structure prediction.
+      - title: Evolutionary-scale Prediction of Atomic-level Protein Structure with a Language Model
+        relevance: 1
+        year: 2023
+        venue: Science
+        citation_count: 2500
+        abstract: >-
+          A protein language model predicts atomic-level structure directly
+          from sequence, scaling structure prediction to metagenomic proteins.
+      - title: Language Models are Few-Shot Learners
+        relevance: 0
+        year: 2020
+        venue: NeurIPS
+        doi: 10.48550/arXiv.2005.14165
+        citation_count: 30000
+        abstract: >-
+          Scaling autoregressive language models enables few-shot task
+          performance from in-context examples.
+      - title: Human-Level Control Through Deep Reinforcement Learning
+        relevance: 0
+        year: 2015
+        venue: Nature
+        doi: 10.1038/nature14236
+        citation_count: 25000
+        abstract: >-
+          Deep Q-networks learn Atari control policies from pixels.
+      - title: Very Deep Convolutional Networks for Large-Scale Image Recognition
+        relevance: 0
+        year: 2015
+        venue: ICLR
+        doi: 10.48550/arXiv.1409.1556
+        citation_count: 100000
+        abstract: >-
+          VGG studies convolutional depth for image recognition.
+      - title: Efficient Estimation of Word Representations in Vector Space
+        relevance: 0
+        year: 2013
+        doi: 10.48550/arXiv.1301.3781
+        citation_count: 40000
+        abstract: >-
+          word2vec learns static word embeddings from large corpora.
+
+  - query: sleep deprivation effects on memory and cognition
+    domain: neuroscience
+    candidates:
+      - title: The Memory Function of Sleep
+        relevance: 2
+        year: 2010
+        venue: Nature Reviews Neuroscience
+        doi: 10.1038/nrn2762
+        citation_count: 5000
+        abstract: >-
+          Reviews how sleep consolidates memory, with slow-wave and REM sleep
+          supporting system and synaptic consolidation, and how sleep loss
+          impairs cognition and memory formation.
+      - title: About Sleep's Role in Memory
+        relevance: 2
+        year: 2013
+        venue: Physiological Reviews
+        doi: 10.1152/physrev.00032.2012
+        citation_count: 4000
+        abstract: >-
+          Comprehensive review of sleep-dependent memory consolidation across
+          declarative and procedural systems, including deprivation effects on
+          cognitive performance.
+      - title: Sleep Drives Metabolite Clearance from the Adult Brain
+        relevance: 1
+        year: 2013
+        venue: Science
+        doi: 10.1126/science.1241224
+        citation_count: 4000
+        abstract: >-
+          Sleep expands interstitial space and increases clearance of neurotoxic
+          waste including beta-amyloid, linking sleep to brain maintenance.
+      - title: "Sleep Deprivation: Impact on Cognitive Performance"
+        relevance: 2
+        year: 2007
+        venue: Neuropsychiatric Disease and Treatment
+        citation_count: 2000
+        abstract: >-
+          Reviews experimental evidence on how acute and chronic sleep
+          deprivation degrade attention, working memory, and executive function.
+      - title: Attention Is All You Need
+        relevance: 0
+        year: 2017
+        venue: NeurIPS
+        doi: 10.48550/arXiv.1706.03762
+        citation_count: 100000
+        abstract: >-
+          Transformer sequence architecture built on self-attention.
+      - title: Semi-Supervised Classification with Graph Convolutional Networks
+        relevance: 0
+        year: 2017
+        venue: ICLR
+        doi: 10.48550/arXiv.1609.02907
+        citation_count: 30000
+        abstract: >-
+          Graph convolutional networks for node classification.
+      - title: Genome Engineering Using the CRISPR-Cas9 System
+        relevance: 0
+        year: 2013
+        venue: Nature Protocols
+        doi: 10.1038/nprot.2013.143
+        citation_count: 9000
+        abstract: >-
+          Protocol for CRISPR-Cas9 genome editing.
+      - title: "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness"
+        relevance: 0
+        year: 2022
+        doi: 10.48550/arXiv.2205.14135
+        citation_count: 3000
+        abstract: >-
+          IO-aware exact attention algorithm for transformers.
+
+  - query: misinformation spread on social media
+    domain: social-science
+    candidates:
+      - title: The Spread of True and False News Online
+        relevance: 2
+        year: 2018
+        venue: Science
+        doi: 10.1126/science.aap9559
+        citation_count: 8000
+        abstract: >-
+          Analysis of Twitter cascades showing false news spreads farther,
+          faster, and more broadly than true news, driven by novelty and human
+          sharing rather than bots.
+      - title: The Science of Fake News
+        relevance: 2
+        year: 2018
+        venue: Science
+        doi: 10.1126/science.aao2998
+        citation_count: 4000
+        abstract: >-
+          Framework article on the prevalence, spread, and countermeasures of
+          fake news and misinformation on social media platforms.
+      - title: Fake News on Twitter During the 2016 U.S. Presidential Election
+        relevance: 1
+        year: 2019
+        venue: Science
+        citation_count: 1500
+        abstract: >-
+          Measures exposure to and sharing of fake news sources on Twitter,
+          finding concentration among small user groups during the election.
+      - title: Fighting Misinformation on Social Media Using Crowdsourced Judgments of News Source Quality
+        relevance: 1
+        year: 2019
+        venue: PNAS
+        citation_count: 1200
+        abstract: >-
+          Shows crowdsourced trust ratings of news sources can inform platform
+          ranking to reduce misinformation spread.
+      - title: Deep Residual Learning for Image Recognition
+        relevance: 0
+        year: 2016
+        venue: CVPR
+        doi: 10.48550/arXiv.1512.03385
+        citation_count: 150000
+        abstract: >-
+          Residual connections for image recognition networks.
+      - title: Proximal Policy Optimization Algorithms
+        relevance: 0
+        year: 2017
+        doi: 10.48550/arXiv.1707.06347
+        citation_count: 20000
+        abstract: >-
+          Clipped-objective policy gradient reinforcement learning.
+      - title: Highly Accurate Protein Structure Prediction with AlphaFold
+        relevance: 0
+        year: 2021
+        venue: Nature
+        doi: 10.1038/s41586-021-03819-2
+        citation_count: 30000
+        abstract: >-
+          Deep learning predicts protein structure with atomic accuracy.
+      - title: Inductive Representation Learning on Large Graphs
+        relevance: 0
+        year: 2017
+        venue: NeurIPS
+        doi: 10.48550/arXiv.1706.02216
+        citation_count: 15000
+        abstract: >-
+          GraphSAGE computes node embeddings on large graphs.
+
+  - query: quantum error correction codes
+    domain: physics
+    candidates:
+      - title: "Surface Codes: Towards Practical Large-Scale Quantum Computation"
+        relevance: 2
+        year: 2012
+        venue: Physical Review A
+        doi: 10.48550/arXiv.1208.0928
+        citation_count: 4000
+        abstract: >-
+          Pedagogical treatment of surface codes for quantum error correction,
+          covering stabilizer measurement, logical qubits, and thresholds for
+          fault-tolerant quantum computation.
+      - title: Stabilizer Codes and Quantum Error Correction
+        relevance: 2
+        year: 1997
+        doi: 10.48550/arXiv.quant-ph/9705052
+        citation_count: 3000
+        abstract: >-
+          Develops the stabilizer formalism underpinning quantum error
+          correcting codes and fault-tolerant operations.
+      - title: Fault-Tolerant Quantum Computation by Anyons
+        relevance: 1
+        year: 2003
+        venue: Annals of Physics
+        doi: 10.48550/arXiv.quant-ph/9707021
+        citation_count: 5000
+        abstract: >-
+          Proposes topological quantum computation with anyons, providing
+          intrinsically fault-tolerant error correction.
+      - title: Quantum Error Correction for Beginners
+        relevance: 1
+        year: 2013
+        venue: Reports on Progress in Physics
+        doi: 10.48550/arXiv.0905.2794
+        citation_count: 900
+        abstract: >-
+          Tutorial introduction to quantum error correction codes and
+          fault-tolerant protocols for quantum computing.
+      - title: "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+        relevance: 0
+        year: 2019
+        venue: NAACL
+        doi: 10.48550/arXiv.1810.04805
+        citation_count: 90000
+        abstract: >-
+          Masked language modeling pre-training for language understanding.
+      - title: A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity
+        relevance: 0
+        year: 2012
+        venue: Science
+        doi: 10.1126/science.1225829
+        citation_count: 15000
+        abstract: >-
+          Cas9 cleaves programmable DNA target sites.
+      - title: Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model
+        relevance: 0
+        year: 2020
+        venue: Nature
+        doi: 10.48550/arXiv.1911.08265
+        citation_count: 3000
+        abstract: >-
+          MuZero plans with a learned model of environment dynamics.
+      - title: "ImageNet: A Large-Scale Hierarchical Image Database"
+        relevance: 0
+        year: 2009
+        venue: CVPR
+        citation_count: 50000
+        abstract: >-
+          Large labeled image database underpinning classification benchmarks.
+
+  - query: end-to-end deep learning speech recognition
+    domain: speech
+    candidates:
+      - title: "Deep Speech: Scaling up End-to-End Speech Recognition"
+        relevance: 2
+        year: 2014
+        doi: 10.48550/arXiv.1412.5567
+        citation_count: 3000
+        abstract: >-
+          End-to-end recurrent network speech recognition trained on spectrograms,
+          replacing hand-engineered pipelines with deep learning at scale.
+      - title: Listen, Attend and Spell
+        relevance: 2
+        year: 2016
+        venue: ICASSP
+        doi: 10.48550/arXiv.1508.01211
+        citation_count: 3000
+        abstract: >-
+          Attention-based encoder-decoder that transcribes speech to characters
+          end to end without HMMs or lexicons.
+      - title: "wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations"
+        relevance: 2
+        year: 2020
+        venue: NeurIPS
+        doi: 10.48550/arXiv.2006.11477
+        citation_count: 5000
+        abstract: >-
+          Self-supervised pre-training of speech representations that fine-tunes
+          into state-of-the-art end-to-end speech recognition with little labeled data.
+      - title: Robust Speech Recognition via Large-Scale Weak Supervision
+        relevance: 1
+        year: 2022
+        doi: 10.48550/arXiv.2212.04356
+        citation_count: 2500
+        abstract: >-
+          Whisper trains multilingual end-to-end speech recognition on weakly
+          supervised web audio, generalizing robustly across domains.
+      - title: Graph Attention Networks
+        relevance: 0
+        year: 2018
+        venue: ICLR
+        doi: 10.48550/arXiv.1710.10903
+        citation_count: 20000
+        abstract: >-
+          Masked self-attention over graph neighborhoods.
+      - title: The Spread of True and False News Online
+        relevance: 0
+        year: 2018
+        venue: Science
+        doi: 10.1126/science.aap9559
+        citation_count: 8000
+        abstract: >-
+          False news spreads faster than true news on Twitter.
+      - title: Highly Accurate Protein Structure Prediction with AlphaFold
+        relevance: 0
+        year: 2021
+        venue: Nature
+        doi: 10.1038/s41586-021-03819-2
+        citation_count: 30000
+        abstract: >-
+          Deep learning predicts protein structures with atomic accuracy.
+      - title: Deep Residual Learning for Image Recognition
+        relevance: 0
+        year: 2016
+        venue: CVPR
+        doi: 10.48550/arXiv.1512.03385
+        citation_count: 150000
+        abstract: >-
+          Residual connections for deep convolutional networks.
+
+  - query: gut microbiome influence on brain and behavior
+    domain: biomedicine
+    candidates:
+      - title: "Mind-Altering Microorganisms: the Impact of the Gut Microbiota on Brain and Behaviour"
+        relevance: 2
+        year: 2012
+        venue: Nature Reviews Neuroscience
+        doi: 10.1038/nrn3346
+        citation_count: 4000
+        abstract: >-
+          Reviews evidence that gut microbiota communicate with the brain along
+          the microbiome-gut-brain axis and influence behavior, stress, and
+          neurodevelopment.
+      - title: Normal Gut Microbiota Modulates Brain Development and Behavior
+        relevance: 2
+        year: 2011
+        venue: PNAS
+        citation_count: 3000
+        abstract: >-
+          Germ-free mice show altered brain development and behavior, showing
+          gut microbiota shape neural circuits during early life.
+      - title: Gut Microbiota in Health and Disease
+        relevance: 1
+        year: 2010
+        venue: Physiological Reviews
+        citation_count: 4000
+        abstract: >-
+          Reviews the composition and physiological roles of gut microbiota,
+          including immune, metabolic, and gut-brain interactions.
+      - title: Efficient Estimation of Word Representations in Vector Space
+        relevance: 0
+        year: 2013
+        doi: 10.48550/arXiv.1301.3781
+        citation_count: 40000
+        abstract: >-
+          word2vec learns word embeddings from corpora.
+      - title: Proximal Policy Optimization Algorithms
+        relevance: 0
+        year: 2017
+        doi: 10.48550/arXiv.1707.06347
+        citation_count: 20000
+        abstract: >-
+          Policy gradient methods for reinforcement learning.
+      - title: "Longformer: The Long-Document Transformer"
+        relevance: 0
+        year: 2020
+        doi: 10.48550/arXiv.2004.05150
+        citation_count: 4000
+        abstract: >-
+          Sparse attention for long documents.
+      - title: "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer"
+        relevance: 0
+        year: 2020
+        venue: JMLR
+        doi: 10.48550/arXiv.1910.10683
+        citation_count: 15000
+        abstract: >-
+          T5 casts NLP tasks as text-to-text problems.
+
+  - query: generative adversarial networks image synthesis
+    domain: computer-vision
+    candidates:
+      - title: Generative Adversarial Networks
+        relevance: 2
+        year: 2014
+        venue: NeurIPS
+        doi: 10.48550/arXiv.1406.2661
+        citation_count: 60000
+        abstract: >-
+          Introduces the adversarial framework where a generator and
+          discriminator compete, enabling realistic image synthesis.
+      - title: Unsupervised Representation Learning with Deep Convolutional Generative Adversarial Networks
+        relevance: 2
+        year: 2016
+        venue: ICLR
+        doi: 10.48550/arXiv.1511.06434
+        citation_count: 15000
+        abstract: >-
+          DCGAN establishes architectural guidelines for stable convolutional
+          GAN training and high-quality image generation.
+      - title: A Style-Based Generator Architecture for Generative Adversarial Networks
+        relevance: 2
+        year: 2019
+        venue: CVPR
+        doi: 10.48550/arXiv.1812.04948
+        citation_count: 10000
+        abstract: >-
+          StyleGAN separates high-level attributes in the generator, producing
+          state-of-the-art photorealistic image synthesis.
+      - title: Analyzing and Improving the Image Quality of StyleGAN
+        relevance: 1
+        year: 2020
+        venue: CVPR
+        doi: 10.48550/arXiv.1912.04958
+        citation_count: 6000
+        abstract: >-
+          StyleGAN2 redesigns normalization and regularization to remove
+          artifacts and improve generated image quality.
+      - title: Denoising Diffusion Probabilistic Models
+        relevance: 1
+        year: 2020
+        venue: NeurIPS
+        doi: 10.48550/arXiv.2006.11239
+        citation_count: 12000
+        abstract: >-
+          Diffusion models synthesize high-quality images by learning to
+          reverse a gradual noising process, rivaling GAN image synthesis.
+      - title: Human-Level Control Through Deep Reinforcement Learning
+        relevance: 0
+        year: 2015
+        venue: Nature
+        doi: 10.1038/nature14236
+        citation_count: 25000
+        abstract: >-
+          Deep Q-networks play Atari from pixels.
+      - title: The Memory Function of Sleep
+        relevance: 0
+        year: 2010
+        venue: Nature Reviews Neuroscience
+        doi: 10.1038/nrn2762
+        citation_count: 5000
+        abstract: >-
+          Sleep consolidates memory across systems.
+      - title: Robust Speech Recognition via Large-Scale Weak Supervision
+        relevance: 0
+        year: 2022
+        doi: 10.48550/arXiv.2212.04356
+        citation_count: 2500
+        abstract: >-
+          Weakly supervised multilingual speech recognition.

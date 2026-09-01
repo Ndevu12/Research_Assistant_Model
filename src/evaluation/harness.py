@@ -48,6 +48,10 @@ class EvaluationReport(BaseModel):
         return sum(values) / len(values) if values else 0.0
 
     @property
+    def mean_recall_at_5(self) -> float:
+        return self._mean([q.recall_at_5 for q in self.queries])
+
+    @property
     def mean_recall_at_10(self) -> float:
         return self._mean([q.recall_at_10 for q in self.queries])
 
@@ -127,18 +131,19 @@ def format_report(report: EvaluationReport) -> str:
         "Golden-set evaluation "
         f"({'embedding' if report.embeddings_used else 'keyword'} ranking)",
         "",
-        f"{'query':<44} {'R@5':>5} {'R@10':>5} {'nDCG@10':>8} {'MRR':>5}",
+        f"{'query':<44} {'domain':<18} {'R@5':>5} {'R@10':>5} {'nDCG@10':>8} {'MRR':>5}",
     ]
     for item in report.queries:
         label = item.query if len(item.query) <= 42 else item.query[:39] + "..."
         lines.append(
-            f"{label:<44} {item.recall_at_5:>5.2f} {item.recall_at_10:>5.2f} "
-            f"{item.ndcg_at_10:>8.2f} {item.mrr:>5.2f}"
+            f"{label:<44} {item.domain:<18} {item.recall_at_5:>5.2f} "
+            f"{item.recall_at_10:>5.2f} {item.ndcg_at_10:>8.2f} {item.mrr:>5.2f}"
         )
     lines.append("")
     lines.append(
-        f"{'mean':<44} {'':>5} {report.mean_recall_at_10:>5.2f} "
-        f"{report.mean_ndcg_at_10:>8.2f} {report.mean_mrr:>5.2f}"
+        f"{'mean':<44} {'':<18} {report.mean_recall_at_5:>5.2f} "
+        f"{report.mean_recall_at_10:>5.2f} {report.mean_ndcg_at_10:>8.2f} "
+        f"{report.mean_mrr:>5.2f}"
     )
     validity = report.citation_validity
     lines.append(
@@ -146,3 +151,18 @@ def format_report(report: EvaluationReport) -> str:
         f"({validity.validity_rate:.0%})"
     )
     return "\n".join(lines)
+
+
+def format_report_json(report: EvaluationReport) -> str:
+    """Render an evaluation report as JSON for automation and CI artifacts."""
+    payload = report.model_dump()
+    payload["means"] = {
+        "recall_at_5": report.mean_recall_at_5,
+        "recall_at_10": report.mean_recall_at_10,
+        "ndcg_at_10": report.mean_ndcg_at_10,
+        "mrr": report.mean_mrr,
+        "citation_validity_rate": report.citation_validity.validity_rate,
+    }
+    import json
+
+    return json.dumps(payload, indent=2)
