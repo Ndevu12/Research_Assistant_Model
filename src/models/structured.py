@@ -47,6 +47,15 @@ STRUCTURED_ROLE_PROMPTS: dict[AgentRole, str] = {
         "prioritized research gaps, actionable opportunities, and "
         "underexplored areas."
     ),
+    AgentRole.COVERAGE: (
+        "You assess literature-search coverage. Judge whether the papers found "
+        "so far answer the research query; when they do not, name the missing "
+        "aspects and propose concise follow-up search queries targeting them."
+    ),
+    AgentRole.VERIFICATION: (
+        "You verify claims against source material. Name the claims the given "
+        "sources do not support, judging strictly from those sources."
+    ),
 }
 
 
