@@ -1,27 +1,51 @@
 # -*- coding: utf-8 -*-
-"""DBLP retrieval provider (Phase 3 stub).
+"""DBLP retrieval provider backed by the DBLP publication search API.
 
-Future flow: DBLP JSON search API with venue-aware ranking and author
-disambiguation for computer-science bibliography coverage.
+DBLP provides authoritative computer-science bibliography metadata (titles,
+venues, years, DOIs) but no abstracts.
 """
 
 from __future__ import annotations
 
 import re
-from typing import ClassVar
+
+import aiohttp
 
 from ..models import RetrievedPaper
-from ._stub_base import StubRetrievalProvider
+from .base import RetrievalProvider
 
 
-class DblpProvider(StubRetrievalProvider):
-    """Retrieval provider stub for DBLP."""
+class DblpProvider(RetrievalProvider):
+    """Retrieval provider for the DBLP computer-science bibliography."""
 
     name = "dblp"
-    _stub_message: ClassVar[str] = (
-        "DBLP provider is not yet implemented. "
-        "Future versions will query the DBLP JSON search API."
-    )
+    _search_url = "https://dblp.org/search/publ/api"
+
+    async def search(
+        self,
+        session: aiohttp.ClientSession,
+        query: str,
+        limit: int | None = None,
+    ) -> list[RetrievedPaper]:
+        resolved_limit = self.resolve_limit(limit)
+        data = await self._request_with_retry(
+            session,
+            self._search_url,
+            params={"q": query, "format": "json", "h": str(resolved_limit)},
+        )
+
+        hits = (((data or {}).get("result") or {}).get("hits") or {}).get("hit") or []
+        return [self.normalize(hit) for hit in hits][:resolved_limit]
+
+    async def _ping(self, session: aiohttp.ClientSession) -> bool:
+        data = await self._request_with_retry(
+            session,
+            self._search_url,
+            params={"q": "algorithm", "format": "json", "h": "1"},
+            timeout=15,
+            max_retries=1,
+        )
+        return bool((data or {}).get("result"))
 
     def normalize(self, raw: dict) -> RetrievedPaper:
         """Convert a DBLP JSON record into a RetrievedPaper."""
@@ -38,6 +62,17 @@ class DblpProvider(StubRetrievalProvider):
             venue = venue[0] if venue else None
 
         authors = raw.get("authors") or []
+        if not authors and info.get("authors"):
+            author_field = info["authors"].get("author")
+            if isinstance(author_field, dict):
+                authors = [author_field.get("text", "")]
+            elif isinstance(author_field, list):
+                authors = [
+                    item.get("text", item) if isinstance(item, dict) else str(item)
+                    for item in author_field
+                ]
+            elif author_field:
+                authors = [str(author_field)]
         if not authors and raw.get("author"):
             author_field = raw["author"]
             if isinstance(author_field, dict):
