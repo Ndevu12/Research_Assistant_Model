@@ -1,6 +1,6 @@
 # Local Development Setup
 
-Development environment for AI Research Assistant: Python 3.13, Pipenv, pytest, and optional docs tooling.
+Development environment for AI Research Assistant: Python 3.11+, Pipenv, pytest, and optional docs tooling.
 
 Source: `Pipfile`, `README.md`, `src/__main__.py`.
 
@@ -8,7 +8,7 @@ Source: `Pipfile`, `README.md`, `src/__main__.py`.
 
 | Requirement | Notes |
 |-------------|-------|
-| Python 3.13+ | Pinned in `Pipfile` `[requires]` |
+| Python 3.11+ | Floor declared in `Pipfile` `[requires]` (`>=3.11`) |
 | Pipenv | Virtualenv and lockfile management |
 | Git | Clone the repository |
 
@@ -19,9 +19,9 @@ For LLM development with Ollama, run [Setup system — Quick start](../setup-sys
 ```bash
 git clone https://github.com/Ndevu12/Research_Assistant_Model.git
 cd Research_Assistant_Model
-pip install pipenv
+pip install pipenv     # externally-managed distro (Arch, Debian 12+, Fedora 39+)? use: pipx install pipenv
 pipenv install --dev
-cp .env.example .env   # optional
+cp -n .env.example .env   # optional; -n leaves an existing .env untouched
 ```
 
 `pipenv install --dev` installs:
