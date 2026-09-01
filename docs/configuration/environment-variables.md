@@ -20,6 +20,8 @@ Boolean env values accept standard truthy strings (`true`, `1`, `yes`).
 |----------|---------|-------------|
 | `RA_CONFIG_DIR` | `config/` (project root) | Override directory for YAML files |
 | `RA_DEBUG` | unset | Alias for debug mode (`1`, `true`, `yes`) — OR-combined with `RA_PIPELINE__DEBUG` |
+| `RA_SKIP_SETUP_CHECK` | unset | Skip the Ollama setup/health check on startup (CI, containers) |
+| `RA_CONSOLE_LOG_LEVEL` | `WARNING` | Log level shown on the console; files always get full detail |
 
 ---
 
@@ -103,6 +105,8 @@ Full weight list: [YAML reference](yaml-reference.md#ranking).
 | `S2_API_KEY` | No | Semantic Scholar — higher rate limits when set |
 | `RA_CROSSREF_MAILTO` | Recommended | CrossRef polite pool (User-Agent mailto) |
 | `CROSSREF_MAILTO` | Recommended | Alias for CrossRef mailto |
+| `NCBI_API_KEY` | No | PubMed E-utilities — higher rate limits when set |
+| `CORE_API_KEY` | For `core` | Required when the CORE provider is enabled |
 
 ---
 
@@ -117,7 +121,27 @@ Full weight list: [YAML reference](yaml-reference.md#ranking).
 | `RA_PIPELINE__SYNTHESIS_TIMEOUT_SECONDS` | `600` | Synthesis stage timeout |
 | `RA_PIPELINE__ENABLED_STAGES__<STAGE>` | `true` | Disable individual pipeline stages |
 
-Stage names: `query_understanding`, `query_expansion`, `retrieval`, `deduplication`, `ranking`, `relevance_scoring`, `clustering`, `synthesis`, `gap_analysis`, `citation_export`, `report_generation`. See [Stage toggles](stage-toggles.md).
+Stage names: `query_understanding`, `query_expansion`, `retrieval`, `deduplication`, `ranking`, `snowball`, `rerank`, `relevance_scoring`, `fulltext`, `clustering`, `synthesis`, `gap_analysis`, `citation_export`, `report_generation`. See [Stage toggles](stage-toggles.md).
+
+---
+
+## Snowball, rerank, fulltext
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RA_SNOWBALL__ENABLED` | `true` | Citation-graph expansion of top-ranked papers |
+| `RA_SNOWBALL__MAX_SEED_PAPERS` | `5` | Seeds for the one-hop expansion |
+| `RA_SNOWBALL__MAX_NEW_PAPERS` | `30` | Cap on candidates entering re-ranking |
+| `RA_RERANK__ENABLED` | `true` | Cross-encoder reranking of the top papers |
+| `RA_RERANK__MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Any sentence-transformers cross-encoder |
+| `RA_RERANK__TOP_N` | `25` | Papers scored by the cross-encoder |
+| `RA_RERANK__BLEND_WEIGHT` | `0.5` | Cross-encoder share of the final score |
+| `RA_FULLTEXT__ENABLED` | `true` | Open-access full-text grounding |
+| `RA_FULLTEXT__MAX_PAPERS` | `5` | Top papers attempted per run |
+| `RA_FULLTEXT__MAX_PDF_MB` | `15` | Per-PDF download size cap |
+| `RA_FULLTEXT__TOP_CHUNKS_PER_PAPER` | `3` | Passages retrieved per paper |
+
+Full key lists live on the stage pages: [Snowball](../architecture/stages/snowball.md), [Rerank](../architecture/stages/rerank.md), [Fulltext](../architecture/stages/fulltext.md).
 
 ---
 

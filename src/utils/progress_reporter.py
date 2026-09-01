@@ -40,6 +40,7 @@ STAGE_LABELS: dict[str, str] = {
     "snowball": "Following citation trails",
     "rerank": "Reranking top papers",
     "relevance_scoring": "Scoring semantic relevance",
+    "fulltext": "Reading full papers",
     "clustering": "Grouping papers by theme",
     "synthesis": "Synthesizing cross-paper insights",
     "gap_analysis": "Identifying research gaps",

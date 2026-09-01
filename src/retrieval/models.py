@@ -52,6 +52,7 @@ class PaperAnalysis(BaseModel):
     doi: Optional[str] = None
     key_points: list[str] = Field(default_factory=list)
     why_relevant: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
 
 
 class ResearchReport(BaseModel):
@@ -103,6 +104,7 @@ class PaperExtraction(BaseModel):
     benchmarks: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
 
 
 class SynthesisResult(BaseModel):

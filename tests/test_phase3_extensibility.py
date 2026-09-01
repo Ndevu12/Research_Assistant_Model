@@ -14,8 +14,8 @@ from src.core.context import PipelineContext, StageResult
 from src.core.events import StageEventCollector
 from src.core.pipeline import ResearchPipeline
 from src.core.registry import bootstrap_default_plugins, get_registry
-from src.fulltext.downloader import StubPDFDownloader
-from src.fulltext.rag import StubRAGIndex
+from src.fulltext.downloader import CachingPDFDownloader
+from src.fulltext.rag import InMemoryFulltextIndex
 from src.reporting.html import render_pdf_ready_html
 from src.reporting.output import render_report_output
 from src.retrieval.providers import (
@@ -170,19 +170,27 @@ class TestPhase3ProviderStubs:
 
 
 class TestFullTextScaffold:
+    def test_downloader_uses_stable_cache_paths(self, tmp_path) -> None:
+        downloader = CachingPDFDownloader(cache_dir=str(tmp_path))
+
+        first = downloader._cache_path("paper-1")
+        again = downloader._cache_path("paper-1")
+        other = downloader._cache_path("paper-2")
+
+        assert first == again
+        assert first != other
+        assert first.suffix == ".pdf"
+
     @pytest.mark.asyncio
-    async def test_stub_pdf_downloader_not_implemented(self) -> None:
-        downloader = StubPDFDownloader()
+    async def test_index_accepts_and_counts_chunks(self) -> None:
+        from src.fulltext.base import FullTextChunk
 
-        with pytest.raises(NotImplementedError, match="PDF download"):
-            await downloader.download("paper-1", "https://example.com/paper.pdf")
+        index = InMemoryFulltextIndex(embedder=None)
+        count = await index.index_chunks(
+            [FullTextChunk(paper_id="p", chunk_index=0, text="chunk text")]
+        )
 
-    @pytest.mark.asyncio
-    async def test_stub_rag_index_not_implemented(self) -> None:
-        index = StubRAGIndex()
-
-        with pytest.raises(NotImplementedError, match="RAG indexing"):
-            await index.index_chunks([])
+        assert count == 1
 
 
 class TestPluginRegistry:
@@ -198,8 +206,8 @@ class TestPluginRegistry:
         assert "dblp" in providers
         assert "query_understanding" in stages
         assert "report_generation" in stages
-        assert "stub" in global_registry.list_fulltext_downloaders()
-        assert "stub" in global_registry.list_fulltext_indexes()
+        assert "default" in global_registry.list_fulltext_downloaders()
+        assert "default" in global_registry.list_fulltext_indexes()
 
     def test_registry_create_retrieval_provider(self) -> None:
         bootstrap_default_plugins()
