@@ -1,6 +1,6 @@
 # Provider Matrix
 
-Summary of all seven registered retrieval providers. HTTP details are in per-provider pages.
+Summary of all seven registered retrieval providers — all now live. HTTP details are in per-provider pages.
 
 Source: `src/retrieval/providers/registry.py`, `_PROVIDER_CLASSES`.
 
@@ -12,12 +12,9 @@ Source: `src/retrieval/providers/registry.py`, `_PROVIDER_CLASSES`.
 | [semantic_scholar](per-provider/semantic-scholar.md) | **Live** | Yes | `S2_API_KEY` (optional) | Used in CLI and full pipeline |
 | [arxiv](per-provider/arxiv.md) | **Live** | No | None | Full pipeline / API only |
 | [crossref](per-provider/crossref.md) | **Live** | No | Mailto in User-Agent (recommended) | Full pipeline / API only |
-| `pubmed` | **Stub** | No | — | `NotImplementedError` if enabled |
-| `core` | **Stub** | No | — | `NotImplementedError` if enabled |
-| `dblp` | **Stub** | No | — | `NotImplementedError` if enabled |
-
-!!! warning "Stub providers"
-    PubMed, CORE, and DBLP are registered but not implemented. Enabling them raises `NotImplementedError` in `search()`, which `_safe_search()` catches — you get a warning and empty results for that provider, not a crash.
+| [pubmed](per-provider/pubmed.md) | **Live** | No | `NCBI_API_KEY` (optional) | Biomedicine; abstracts via efetch |
+| [core](per-provider/core.md) | **Live** | No | `CORE_API_KEY` (required) | Open-access aggregator |
+| [dblp](per-provider/dblp.md) | **Live** | No | None | CS bibliography; no abstracts |
 
 ## Enable snippets
 
@@ -48,12 +45,16 @@ RA_RETRIEVAL__PROVIDERS__CROSSREF__ENABLED=true
 RA_CROSSREF_MAILTO=you@example.com
 ```
 
-**Do not enable stubs:**
+**Add PubMed, DBLP, or CORE:**
 
 ```yaml
-# Will warn and return no papers from this provider
-pubmed:
-  enabled: true   # not recommended until implemented
+providers:
+  pubmed:
+    enabled: true
+  dblp:
+    enabled: true
+  core:
+    enabled: true   # requires CORE_API_KEY
 ```
 
 ## HTTP summary
@@ -64,6 +65,9 @@ pubmed:
 | Semantic Scholar | GET | `https://api.semanticscholar.org/graph/v1/paper/search/bulk` | 60s | Sleep `Retry-After` |
 | arXiv | GET | `https://export.arxiv.org/api/query` | 60s | Retry only |
 | CrossRef | GET | `https://api.crossref.org/works` | 60s | Sleep `Retry-After` |
+| PubMed | GET | `https://eutils.ncbi.nlm.nih.gov/entrez/eutils` | 60s | Sleep `Retry-After` |
+| DBLP | GET | `https://dblp.org/search/publ/api` | 60s | Sleep `Retry-After` |
+| CORE | GET | `https://api.core.ac.uk/v3/search/works` | 60s | Sleep `Retry-After` |
 
 All live providers: **3 retries**, exponential backoff, health ping at **15s** timeout.
 
