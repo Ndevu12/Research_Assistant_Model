@@ -124,6 +124,18 @@ RA_QUERY_EXPANSION__LLM_ENABLED=true
 
 YAML equivalents under `synthesis:` and `query_expansion:` in `config/default.yaml`. See [Stage toggles](../configuration/stage-toggles.md).
 
+## Structured outputs
+
+When the LLM path runs, output schemas are enforced natively by default
+(`RA_LLM__STRUCTURED_OUTPUTS=true`): the pydantic model is attached to the
+agent (`output_type`), pydantic-ai validates the response and retries with
+validation feedback on schema violations, and the caller receives a typed
+object or falls back to heuristics. Disable the flag to route through the
+legacy prose-JSON path with the repair/retry machinery in `src/utils/` —
+useful only for backends that cannot honor response schemas. Identity
+fields (paper ID, title) are always taken from retrieval metadata, never
+from model output.
+
 ## Verify LLM is active
 
 Check pipeline logs or debug JSON in `logs/debug/`:

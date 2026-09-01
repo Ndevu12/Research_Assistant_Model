@@ -109,13 +109,6 @@ async def analyze_gaps(
 
         llm_config = get_settings().llm
 
-    agent = AgentFactory(llm_config).create_agent(AgentRole.GAP_ANALYSIS, config=llm_config)
-    response_handler = handler or EnhancedResponseHandler(ResponseHandlerConfig())
-    context = RequestContext(
-        user_query=query,
-        model_name=llm_config.model,
-        session_id=session_id,
-    )
     prompt = _build_gap_prompt(query, synthesis, clusters)
 
     from ..utils.progress_reporter import get_progress_reporter
@@ -123,6 +116,27 @@ async def analyze_gaps(
     reporter = get_progress_reporter()
     if reporter is not None:
         reporter.set_activity("Analyzing research gaps with AI…")
+
+    if llm_config.structured_outputs:
+        from ..models.structured import try_run_structured
+
+        gap_result = await try_run_structured(
+            AgentRole.GAP_ANALYSIS,
+            prompt,
+            GapAnalysisResult,
+            llm_config,
+        )
+        if gap_result is not None:
+            return gap_result
+        return _heuristic_gap_analysis(synthesis, query, clusters)
+
+    agent = AgentFactory(llm_config).create_agent(AgentRole.GAP_ANALYSIS, config=llm_config)
+    response_handler = handler or EnhancedResponseHandler(ResponseHandlerConfig())
+    context = RequestContext(
+        user_query=query,
+        model_name=llm_config.model,
+        session_id=session_id,
+    )
 
     result = await response_handler.process_structured_response(
         agent,
