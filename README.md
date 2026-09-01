@@ -2,7 +2,7 @@
 
 A local-first research pipeline that retrieves academic papers from multiple scholarly APIs, ranks and clusters them with embeddings, synthesizes cross-paper insights, and exports reports in several formats. Uses **Ollama** by default for fully local LLM inference, with optional **OpenAI** and **Anthropic** providers.
 
-Built with Python 3.13, pydantic-ai, sentence-transformers, and async I/O.
+Built with Python 3.11+, pydantic-ai, sentence-transformers, and async I/O.
 
 **Documentation:** [https://ndevu12.github.io/Research_Assistant_Model/](https://ndevu12.github.io/Research_Assistant_Model/) — architecture, configuration, API reference, and operations.
 
@@ -17,7 +17,7 @@ Built with Python 3.13, pydantic-ai, sentence-transformers, and async I/O.
 
 ## Requirements
 
-- Python 3.13+ and [Pipenv](https://pipenv.pypa.io/)
+- Python 3.11+ and [Pipenv](https://pipenv.pypa.io/)
 - Internet access for paper retrieval (LLM inference can run fully offline after model download)
 
 | Local model | RAM | Disk |
@@ -30,9 +30,9 @@ Cloud providers require only an API key — no Ollama install.
 ## Quick start
 
 ```bash
-pip install pipenv
+pip install pipenv            # externally-managed distro (Arch, Debian 12+, Fedora 39+)? use: pipx install pipenv
 pipenv install
-cp .env.example .env          # optional; edit as needed
+cp -n .env.example .env       # optional; -n leaves an existing .env untouched
 pipenv run python -m src "transformer attention mechanisms"
 ```
 

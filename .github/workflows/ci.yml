@@ -38,9 +38,16 @@ jobs:
         run: ruff check src tests setups
 
   test:
-    name: Tests
+    name: Tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    strategy:
+      # Every supported interpreter reports independently, so one broken
+      # version never masks the others.
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout
@@ -48,6 +55,8 @@ jobs:
 
       - name: Setup Pipenv
         uses: ./.github/actions/setup-pipenv
+        with:
+          python-version: ${{ matrix.python-version }}
 
       # Auto-discovers every test file so new tests can never be silently skipped.
       - name: Run tests

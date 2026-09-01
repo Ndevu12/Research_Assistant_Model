@@ -2,7 +2,7 @@
 
 A local-first research pipeline that retrieves academic papers from multiple scholarly APIs, ranks and clusters them with embeddings, synthesizes cross-paper insights, and exports reports in several formats. Uses **Ollama** by default for fully local LLM inference, with optional **OpenAI** and **Anthropic** providers.
 
-Built with Python 3.13, pydantic-ai, sentence-transformers, and async I/O.
+Built with Python 3.11+, pydantic-ai, sentence-transformers, and async I/O.
 
 Feature list, requirements, and RAM guidance: [README](https://github.com/Ndevu12/Research_Assistant_Model#features).
 
@@ -13,7 +13,7 @@ Feature list, requirements, and RAM guidance: [README](https://github.com/Ndevu1
 
 | Section | Description |
 |---------|-------------|
-| [Installation](getting-started/installation.md) | Pipenv, Python 3.13, dependencies |
+| [Installation](getting-started/installation.md) | Pipenv, Python 3.11+, dependencies |
 | [Quick Start](getting-started/quick-start.md) | First query and auto-setup flow |
 | [CLI Reference](user-guide/cli.md) | Flags, batch vs interactive mode |
 | [CLI vs API](user-guide/cli-vs-api.md) | Execution paths and provider divergence |
