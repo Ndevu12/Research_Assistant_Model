@@ -343,6 +343,43 @@ def recover_synthesis_output(
     return synthesis
 
 
+def _use_structured_outputs(llm_config: LLMConfig | None) -> bool:
+    if llm_config is not None:
+        return llm_config.structured_outputs
+    from ..config.settings import get_settings
+
+    return get_settings().llm.structured_outputs
+
+
+async def _extract_single_paper_structured(
+    paper: RankedPaper,
+    query: str,
+    llm_config: LLMConfig | None,
+    passages: list[str] | None = None,
+) -> tuple[PaperExtraction, bool]:
+    """Schema-enforced extraction; falls back to heuristics on failure."""
+    from ..models.structured import try_run_structured
+
+    prompt = _build_extraction_prompt(paper, query, passages)
+    extraction = await try_run_structured(
+        AgentRole.EXTRACTION,
+        prompt,
+        PaperExtraction,
+        llm_config,
+    )
+    if extraction is None:
+        return _heuristic_extraction(paper, passages), False
+
+    # Identity fields come from our metadata, never from model output.
+    updates: dict[str, object] = {
+        "paper_id": paper.paper.paper_id,
+        "title": paper.paper.title,
+    }
+    if not extraction.evidence and passages:
+        updates["evidence"] = _evidence_from_passages(passages)
+    return extraction.model_copy(update=updates), True
+
+
 async def _extract_single_paper(
     paper: RankedPaper,
     query: str,
@@ -412,15 +449,21 @@ async def extract_papers(
     llm_targets = ranked_papers[:max_llm_papers]
     heuristic_targets = ranked_papers[max_llm_papers:]
 
-    agent = AgentFactory(llm_config).create_agent(AgentRole.EXTRACTION, config=llm_config)
-    response_handler = handler or EnhancedResponseHandler(
-        _synthesis_handler_config(synthesis_config.extraction_max_retries)
-    )
-    context = RequestContext(
-        user_query=query,
-        model_name=llm_config.model if llm_config else "default",
-        session_id=session_id,
-    )
+    use_structured = _use_structured_outputs(llm_config)
+    agent = None
+    response_handler = None
+    context = None
+    if not use_structured:
+        # Legacy prose-JSON path with the repair/retry machinery.
+        agent = AgentFactory(llm_config).create_agent(AgentRole.EXTRACTION, config=llm_config)
+        response_handler = handler or EnhancedResponseHandler(
+            _synthesis_handler_config(synthesis_config.extraction_max_retries)
+        )
+        context = RequestContext(
+            user_query=query,
+            model_name=llm_config.model if llm_config else "default",
+            session_id=session_id,
+        )
 
     from ..utils.progress_reporter import get_progress_reporter
 
@@ -447,14 +490,22 @@ async def extract_papers(
                     f"Analyzing paper {index}/{len(llm_targets)}: {title_preview}…"
                 )
 
-            extraction, llm_success = await _extract_single_paper(
-                paper,
-                query,
-                agent,
-                response_handler,
-                context,
-                passages=paper_passages,
-            )
+            if use_structured:
+                extraction, llm_success = await _extract_single_paper_structured(
+                    paper,
+                    query,
+                    llm_config,
+                    passages=paper_passages,
+                )
+            else:
+                extraction, llm_success = await _extract_single_paper(
+                    paper,
+                    query,
+                    agent,
+                    response_handler,
+                    context,
+                    passages=paper_passages,
+                )
 
         if llm_success:
             breaker["consecutive_failures"] = 0
@@ -519,15 +570,6 @@ async def synthesize_collective(
 
         llm_config = get_settings().llm
 
-    agent = AgentFactory(llm_config).create_agent(AgentRole.SYNTHESIS, config=llm_config)
-    response_handler = handler or EnhancedResponseHandler(
-        _synthesis_handler_config(synthesis_config.collective_max_retries)
-    )
-    context = RequestContext(
-        user_query=query,
-        model_name=llm_config.model,
-        session_id=session_id,
-    )
     prompt = _build_synthesis_prompt(query, extractions, clusters, ranked_papers)
 
     logger.info("Running LLM collective synthesis across %d paper(s)", len(extractions))
@@ -538,6 +580,30 @@ async def synthesize_collective(
         reporter.set_activity(
             f"Synthesizing insights across {len(extractions)} paper(s)…"
         )
+
+    if _use_structured_outputs(llm_config):
+        from ..models.structured import try_run_structured
+
+        synthesis = await try_run_structured(
+            AgentRole.SYNTHESIS,
+            prompt,
+            SynthesisResult,
+            llm_config,
+        )
+        if synthesis is not None:
+            return synthesis
+        logger.warning("LLM collective synthesis failed; using heuristic fallback")
+        return _heuristic_synthesis(query, extractions, clusters, ranked_papers=ranked_papers)
+
+    agent = AgentFactory(llm_config).create_agent(AgentRole.SYNTHESIS, config=llm_config)
+    response_handler = handler or EnhancedResponseHandler(
+        _synthesis_handler_config(synthesis_config.collective_max_retries)
+    )
+    context = RequestContext(
+        user_query=query,
+        model_name=llm_config.model,
+        session_id=session_id,
+    )
 
     result = await response_handler.process_structured_response(
         agent,

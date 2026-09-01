@@ -7,9 +7,18 @@ import re
 import time
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, Field
+
 from ..core.context import PipelineContext, StageResult
 from ..retrieval.models import ExpandedQuerySet, QueryUnderstandingResult
 from .text_utils import QUERY_STOP_WORDS, extract_core_concepts
+
+
+class _ExpansionSuggestions(BaseModel):
+    """Structured output for LLM query expansion."""
+
+    variants: list[str] = Field(default_factory=list)
+    sub_questions: list[str] = Field(default_factory=list)
 
 if TYPE_CHECKING:
     from ..config.settings import QueryExpansionConfig
@@ -271,7 +280,6 @@ async def expand_query_llm(
         from ..models import AgentFactory, AgentRole
 
         settings = get_settings()
-        agent = AgentFactory(settings.llm).create_agent(AgentRole.EXPANSION, config=settings.llm)
         prompt = (
             f"Expand this research query into {config.max_variants} search variants "
             f"and {config.max_sub_questions} sub-questions: {query}"
@@ -282,6 +290,23 @@ async def expand_query_llm(
         if reporter is not None:
             reporter.set_activity("Expanding query with AI…")
 
+        if settings.llm.structured_outputs:
+            from ..models.structured import run_structured
+
+            suggestions = await run_structured(
+                AgentRole.EXPANSION,
+                prompt,
+                _ExpansionSuggestions,
+                settings.llm,
+            )
+            return (
+                [str(item) for item in suggestions.variants][: config.max_variants],
+                [str(item) for item in suggestions.sub_questions][
+                    : config.max_sub_questions
+                ],
+            )
+
+        agent = AgentFactory(settings.llm).create_agent(AgentRole.EXPANSION, config=settings.llm)
         raw_output = await stream_agent_text(
             agent,
             prompt,

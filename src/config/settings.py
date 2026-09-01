@@ -66,6 +66,7 @@ class LLMConfig(BaseModel):
     api_key: str | None = None
     temperature: float = 0.2
     timeout_seconds: int = 120
+    structured_outputs: bool = True
 
 
 class EmbeddingConfig(BaseModel):
