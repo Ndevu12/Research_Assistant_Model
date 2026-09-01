@@ -9,6 +9,7 @@ weights:
   keyword_overlap: 0.10
   author_prominence: 0.05
   embedding_similarity: 0.30
+  lexical_bm25: 0.08
 domain_penalty_multiplier: 0.5
 outlier_embedding_gap: 0.12
 keyword_collision_max_sim: 0.40

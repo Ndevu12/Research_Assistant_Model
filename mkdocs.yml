@@ -77,6 +77,7 @@ nav:
           - architecture/stages/deduplication.md
           - architecture/stages/ranking.md
           - architecture/stages/snowball.md
+          - architecture/stages/rerank.md
           - architecture/stages/relevance-scoring.md
           - architecture/stages/clustering.md
           - architecture/stages/synthesis.md
