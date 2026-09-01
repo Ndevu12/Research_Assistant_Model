@@ -10,7 +10,7 @@ This page covers what gets installed, layout, and verification — not repeated 
 
 | Requirement | Version / notes |
 |-------------|-----------------|
-| Python | 3.13+ |
+| Python | 3.11+ (tested on 3.11–3.14) |
 | Pipenv | Dependency and virtualenv management |
 | Internet | API retrieval; optional after Ollama model download for local LLM |
 | RAM (local LLM) | 4–6 GB (`llama3.2:3b`) or 8–10 GB (`llama3.1:8b`) |
