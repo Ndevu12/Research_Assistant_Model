@@ -2,6 +2,12 @@
 """LLM provider abstraction (not paper domain models)."""
 
 from .base import ROLE_SYSTEM_PROMPTS, AgentRole, LLMProvider, normalize_openai_base_url
+from .structured import (
+    STRUCTURED_ROLE_PROMPTS,
+    create_structured_agent,
+    run_structured,
+    try_run_structured,
+)
 from .factory import (
     AgentFactory,
     create_llm_agent,
@@ -14,6 +20,10 @@ from .openai import OpenAIProviderImpl
 from .anthropic import AnthropicProviderImpl
 
 __all__ = [
+    "STRUCTURED_ROLE_PROMPTS",
+    "create_structured_agent",
+    "run_structured",
+    "try_run_structured",
     "AgentFactory",
     "AgentRole",
     "AnthropicProviderImpl",

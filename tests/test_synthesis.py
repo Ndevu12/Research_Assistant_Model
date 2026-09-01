@@ -25,7 +25,7 @@ from src.analysis.synthesis import (
     synthesize_collective,
 )
 from src.core.stage_recovery import recover_stage_output
-from src.config.settings import AppSettings
+from src.config.settings import AppSettings, LLMConfig
 from src.core.context import PipelineContext
 from src.core.pipeline import ResearchPipeline
 from src.research.clustering import ClusteringStage
@@ -77,6 +77,11 @@ def _mock_handler_failure() -> EnhancedResponseHandler:
         )
     )
     return handler
+
+
+def _legacy_llm_config() -> LLMConfig:
+    """LLM config exercising the legacy prose-JSON handler path."""
+    return LLMConfig(structured_outputs=False)
 
 
 def _llm_synthesis_config(**overrides: object):
@@ -295,6 +300,7 @@ class TestSynthesisWorkflow:
         extractions = await extract_papers(
             ranked,
             "test query",
+            llm_config=_legacy_llm_config(),
             handler=handler,
             concurrency=1,
             synthesis_config=_llm_synthesis_config(max_llm_papers=1),
@@ -312,6 +318,7 @@ class TestSynthesisWorkflow:
         extractions = await extract_papers(
             ranked,
             "test query",
+            llm_config=_legacy_llm_config(),
             handler=handler,
             concurrency=1,
             synthesis_config=_llm_synthesis_config(max_llm_papers=1),
@@ -335,6 +342,7 @@ class TestSynthesisWorkflow:
             "transformers",
             extractions,
             [],
+            llm_config=_legacy_llm_config(),
             handler=handler,
             synthesis_config=_llm_synthesis_config(),
         )
@@ -367,6 +375,7 @@ class TestSynthesisWorkflow:
             "deep learning",
             ranked,
             clusters,
+            llm_config=_legacy_llm_config(),
             handler=handler,
             concurrency=2,
             synthesis_config=_llm_synthesis_config(max_llm_papers=2),
@@ -388,7 +397,9 @@ class TestGapAnalysis:
         )
         handler = _mock_handler_success(expected)
 
-        result = await analyze_gaps("query", synthesis, handler=handler)
+        result = await analyze_gaps(
+            "query", synthesis, llm_config=_legacy_llm_config(), handler=handler
+        )
 
         assert result.opportunities == ["Run systematic ablations"]
 
@@ -397,7 +408,9 @@ class TestGapAnalysis:
         synthesis = SynthesisResult(gaps=["Understudied domain"])
         handler = _mock_handler_failure()
 
-        result = await analyze_gaps("query", synthesis, handler=handler)
+        result = await analyze_gaps(
+            "query", synthesis, llm_config=_legacy_llm_config(), handler=handler
+        )
 
         assert "Understudied domain" in result.gaps
         assert result.opportunities
@@ -435,7 +448,10 @@ class TestSynthesisPipelineStages:
         synthesis = SynthesisResult(gaps=["Gap one"])
         ctx = PipelineContext.create(
             "gap stage",
-            AppSettings(synthesis={"llm_enabled": True}),
+            AppSettings(
+                synthesis={"llm_enabled": True},
+                llm={"structured_outputs": False},
+            ),
         )
         ctx.set_artifact("paper_clusters", [PaperCluster(theme="T", paper_ids=["p1"])])
 
@@ -570,6 +586,7 @@ class TestStageRecovery:
         extractions = await extract_papers(
             ranked,
             "query",
+            llm_config=_legacy_llm_config(),
             handler=handler,
             synthesis_config=settings.synthesis,
         )
