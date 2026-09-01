@@ -83,6 +83,7 @@ class RankingWeights(BaseModel):
     keyword_overlap: float = 0.10
     author_prominence: float = 0.05
     embedding_similarity: float = 0.30
+    lexical_bm25: float = 0.08
 
 
 class RankingConfig(BaseModel):
@@ -149,6 +150,15 @@ class RetrievalConfig(BaseModel):
     )
 
 
+class RerankConfig(BaseModel):
+    """Cross-encoder reranking of the top-ranked papers."""
+
+    enabled: bool = True
+    model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    top_n: int = 25
+    blend_weight: float = 0.5
+
+
 class SnowballConfig(BaseModel):
     """Citation-graph expansion around top-ranked papers."""
 
@@ -174,6 +184,7 @@ class PipelineConfig(BaseModel):
             "deduplication": True,
             "ranking": True,
             "snowball": True,
+            "rerank": True,
             "relevance_scoring": True,
             "clustering": True,
             "synthesis": True,
@@ -252,6 +263,7 @@ class AppSettings(BaseSettings):
     relevance_scoring: RelevanceScoringConfig = Field(default_factory=RelevanceScoringConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     snowball: SnowballConfig = Field(default_factory=SnowballConfig)
+    rerank: RerankConfig = Field(default_factory=RerankConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     synthesis: SynthesisConfig = Field(default_factory=SynthesisConfig)
