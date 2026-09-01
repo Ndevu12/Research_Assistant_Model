@@ -53,6 +53,7 @@ class PaperAnalysis(BaseModel):
     key_points: list[str] = Field(default_factory=list)
     why_relevant: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
+    unverified_points: list[str] = Field(default_factory=list)
 
 
 class ResearchReport(BaseModel):
@@ -126,11 +127,24 @@ class GapAnalysisResult(BaseModel):
     underexplored_areas: list[str] = Field(default_factory=list)
 
 
+class VerificationSummary(BaseModel):
+    """Outcome of the claim-verification pass."""
+
+    claims_checked: int = 0
+    claims_unverified: int = 0
+    method: str = "heuristic"
+
+    @property
+    def claims_supported(self) -> int:
+        return self.claims_checked - self.claims_unverified
+
+
 class EnhancedResearchReport(BaseModel):
     """Extended research report with synthesis, clusters, and exports."""
 
     query: str
     executive_summary: str = ""
+    verification: Optional[VerificationSummary] = None
     papers: list[PaperAnalysis] = Field(default_factory=list)
     clusters: list[PaperCluster] = Field(default_factory=list)
     synthesis: Optional[SynthesisResult] = None
