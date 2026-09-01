@@ -97,6 +97,9 @@ nav:
           - retrieval/per-provider/semantic-scholar.md
           - retrieval/per-provider/arxiv.md
           - retrieval/per-provider/crossref.md
+          - retrieval/per-provider/pubmed.md
+          - retrieval/per-provider/dblp.md
+          - retrieval/per-provider/core.md
   - LLM:
       - llm/ollama.md
       - llm/cloud-providers.md
