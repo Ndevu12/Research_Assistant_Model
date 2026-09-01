@@ -1,0 +1,451 @@
+version: 1
+queries:
+  - query: transformer attention mechanisms
+    domain: machine-learning
+    candidates:
+      - title: Attention Is All You Need
+        relevance: 2
+        year: 2017
+        venue: NeurIPS
+        doi: 10.48550/arXiv.1706.03762
+        citation_count: 100000
+        abstract: >-
+          Introduces the Transformer, a sequence transduction architecture based
+          entirely on scaled dot-product self-attention and multi-head attention,
+          dispensing with recurrence and convolutions.
+      - title: "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness"
+        relevance: 2
+        year: 2022
+        doi: 10.48550/arXiv.2205.14135
+        citation_count: 3000
+        abstract: >-
+          Proposes an IO-aware exact attention algorithm that tiles attention
+          computation to reduce memory bandwidth, speeding up transformer
+          training and inference for long sequences.
+      - title: "Longformer: The Long-Document Transformer"
+        relevance: 1
+        year: 2020
+        doi: 10.48550/arXiv.2004.05150
+        citation_count: 4000
+        abstract: >-
+          Introduces a sparse sliding-window attention mechanism that scales
+          transformer attention linearly with sequence length for long documents.
+      - title: "Reformer: The Efficient Transformer"
+        relevance: 1
+        year: 2020
+        venue: ICLR
+        doi: 10.48550/arXiv.2001.04451
+        citation_count: 2500
+        abstract: >-
+          Uses locality-sensitive hashing attention and reversible layers to
+          reduce the memory and compute cost of transformer attention.
+      - title: "Efficient Transformers: A Survey"
+        relevance: 1
+        year: 2022
+        doi: 10.48550/arXiv.2009.06732
+        citation_count: 1500
+        abstract: >-
+          Surveys efficient transformer architectures, categorizing sparse,
+          low-rank, and kernel-based approximations of the attention mechanism.
+      - title: "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+        relevance: 1
+        year: 2019
+        venue: NAACL
+        doi: 10.48550/arXiv.1810.04805
+        citation_count: 90000
+        abstract: >-
+          Pre-trains deep bidirectional transformer encoders with masked language
+          modeling, transferring attention-based representations to downstream tasks.
+      - title: Deep Residual Learning for Image Recognition
+        relevance: 0
+        year: 2016
+        venue: CVPR
+        doi: 10.48550/arXiv.1512.03385
+        citation_count: 150000
+        abstract: >-
+          Introduces residual connections that ease optimization of very deep
+          convolutional networks for image recognition.
+      - title: A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity
+        relevance: 0
+        year: 2012
+        venue: Science
+        doi: 10.1126/science.1225829
+        citation_count: 15000
+        abstract: >-
+          Shows that the Cas9 endonuclease can be programmed with guide RNA to
+          cleave specific DNA sites, founding CRISPR genome editing.
+      - title: Human-Level Control Through Deep Reinforcement Learning
+        relevance: 0
+        year: 2015
+        venue: Nature
+        doi: 10.1038/nature14236
+        citation_count: 25000
+        abstract: >-
+          Presents the deep Q-network agent that learns control policies from
+          pixels, reaching human-level performance on Atari games.
+      - title: Efficient Estimation of Word Representations in Vector Space
+        relevance: 0
+        year: 2013
+        doi: 10.48550/arXiv.1301.3781
+        citation_count: 40000
+        abstract: >-
+          Introduces word2vec, learning static word embeddings with shallow
+          log-linear models over large corpora.
+
+  - query: graph neural networks node classification
+    domain: machine-learning
+    candidates:
+      - title: Semi-Supervised Classification with Graph Convolutional Networks
+        relevance: 2
+        year: 2017
+        venue: ICLR
+        doi: 10.48550/arXiv.1609.02907
+        citation_count: 30000
+        abstract: >-
+          Introduces graph convolutional networks with a first-order spectral
+          approximation for semi-supervised node classification on citation graphs.
+      - title: Graph Attention Networks
+        relevance: 2
+        year: 2018
+        venue: ICLR
+        doi: 10.48550/arXiv.1710.10903
+        citation_count: 20000
+        abstract: >-
+          Applies masked self-attention over graph neighborhoods so nodes weigh
+          neighbors adaptively for node classification tasks.
+      - title: Inductive Representation Learning on Large Graphs
+        relevance: 2
+        year: 2017
+        venue: NeurIPS
+        doi: 10.48550/arXiv.1706.02216
+        citation_count: 15000
+        abstract: >-
+          Introduces GraphSAGE, sampling and aggregating neighborhood features to
+          compute node embeddings inductively on large graphs.
+      - title: Relational Inductive Biases, Deep Learning, and Graph Networks
+        relevance: 1
+        year: 2018
+        doi: 10.48550/arXiv.1806.01261
+        citation_count: 4000
+        abstract: >-
+          Position paper unifying graph network architectures and arguing for
+          relational inductive biases in deep learning over structured data.
+      - title: "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+        relevance: 0
+        year: 2019
+        venue: NAACL
+        doi: 10.48550/arXiv.1810.04805
+        citation_count: 90000
+        abstract: >-
+          Pre-trains deep bidirectional transformer encoders with masked language
+          modeling for natural language understanding tasks.
+      - title: Proximal Policy Optimization Algorithms
+        relevance: 0
+        year: 2017
+        doi: 10.48550/arXiv.1707.06347
+        citation_count: 20000
+        abstract: >-
+          Introduces PPO, a family of policy-gradient reinforcement learning
+          methods with clipped surrogate objectives.
+      - title: Mastering the Game of Go with Deep Neural Networks and Tree Search
+        relevance: 0
+        year: 2016
+        venue: Nature
+        doi: 10.1038/nature16961
+        citation_count: 18000
+        abstract: >-
+          Combines policy and value networks with Monte Carlo tree search to
+          defeat professional players at Go.
+      - title: Attention Is All You Need
+        relevance: 0
+        year: 2017
+        venue: NeurIPS
+        doi: 10.48550/arXiv.1706.03762
+        citation_count: 100000
+        abstract: >-
+          Introduces the Transformer sequence architecture built on scaled
+          dot-product self-attention for machine translation.
+
+  - query: CRISPR gene editing mechanisms
+    domain: biomedicine
+    candidates:
+      - title: A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity
+        relevance: 2
+        year: 2012
+        venue: Science
+        doi: 10.1126/science.1225829
+        citation_count: 15000
+        abstract: >-
+          Demonstrates that Cas9 guided by dual RNA cleaves target DNA at
+          programmable sites, establishing the mechanism behind CRISPR gene editing.
+      - title: Multiplex Genome Engineering Using CRISPR/Cas Systems
+        relevance: 2
+        year: 2013
+        venue: Science
+        doi: 10.1126/science.1231143
+        citation_count: 14000
+        abstract: >-
+          Engineers CRISPR/Cas9 for multiplexed, targeted genome editing in
+          mammalian cells with guide RNA arrays.
+      - title: Genome Engineering Using the CRISPR-Cas9 System
+        relevance: 2
+        year: 2013
+        venue: Nature Protocols
+        doi: 10.1038/nprot.2013.143
+        citation_count: 9000
+        abstract: >-
+          Step-by-step protocol for CRISPR-Cas9 genome editing, covering guide
+          design, delivery, and validation of edits.
+      - title: Programmable Editing of a Target Base in Genomic DNA Without Double-Stranded DNA Cleavage
+        relevance: 1
+        year: 2016
+        venue: Nature
+        doi: 10.1038/nature17946
+        citation_count: 5000
+        abstract: >-
+          Introduces base editing, fusing a cytidine deaminase to catalytically
+          impaired Cas9 to edit single bases without double-strand breaks.
+      - title: Semi-Supervised Classification with Graph Convolutional Networks
+        relevance: 0
+        year: 2017
+        venue: ICLR
+        doi: 10.48550/arXiv.1609.02907
+        citation_count: 30000
+        abstract: >-
+          Introduces graph convolutional networks for semi-supervised node
+          classification on citation graphs.
+      - title: Deep Residual Learning for Image Recognition
+        relevance: 0
+        year: 2016
+        venue: CVPR
+        doi: 10.48550/arXiv.1512.03385
+        citation_count: 150000
+        abstract: >-
+          Introduces residual connections easing optimization of very deep
+          convolutional networks for image recognition.
+      - title: Language Models are Few-Shot Learners
+        relevance: 0
+        year: 2020
+        venue: NeurIPS
+        doi: 10.48550/arXiv.2005.14165
+        citation_count: 30000
+        abstract: >-
+          Shows that scaling language models to 175B parameters enables few-shot
+          task performance from in-context examples.
+
+  - query: deep reinforcement learning for games
+    domain: machine-learning
+    candidates:
+      - title: Human-Level Control Through Deep Reinforcement Learning
+        relevance: 2
+        year: 2015
+        venue: Nature
+        doi: 10.1038/nature14236
+        citation_count: 25000
+        abstract: >-
+          Presents the deep Q-network, combining Q-learning with deep
+          convolutional networks to play Atari games from raw pixels.
+      - title: Mastering the Game of Go with Deep Neural Networks and Tree Search
+        relevance: 2
+        year: 2016
+        venue: Nature
+        doi: 10.1038/nature16961
+        citation_count: 18000
+        abstract: >-
+          AlphaGo combines deep reinforcement learning of policy and value
+          networks with tree search to master the game of Go.
+      - title: Proximal Policy Optimization Algorithms
+        relevance: 1
+        year: 2017
+        doi: 10.48550/arXiv.1707.06347
+        citation_count: 20000
+        abstract: >-
+          Introduces PPO, a stable and simple policy-gradient method widely used
+          for reinforcement learning in games and simulated control.
+      - title: Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model
+        relevance: 1
+        year: 2020
+        venue: Nature
+        doi: 10.48550/arXiv.1911.08265
+        citation_count: 3000
+        abstract: >-
+          MuZero learns a model of environment dynamics and plans with it,
+          mastering board games and Atari without knowing the rules in advance.
+      - title: "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+        relevance: 0
+        year: 2019
+        venue: NAACL
+        doi: 10.48550/arXiv.1810.04805
+        citation_count: 90000
+        abstract: >-
+          Pre-trains bidirectional transformer encoders with masked language
+          modeling for language understanding.
+      - title: A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity
+        relevance: 0
+        year: 2012
+        venue: Science
+        doi: 10.1126/science.1225829
+        citation_count: 15000
+        abstract: >-
+          Shows that Cas9 can be programmed with guide RNA to cleave DNA,
+          founding CRISPR genome editing.
+      - title: Graph Attention Networks
+        relevance: 0
+        year: 2018
+        venue: ICLR
+        doi: 10.48550/arXiv.1710.10903
+        citation_count: 20000
+        abstract: >-
+          Applies masked self-attention over graph neighborhoods for node
+          classification.
+      - title: "Longformer: The Long-Document Transformer"
+        relevance: 0
+        year: 2020
+        doi: 10.48550/arXiv.2004.05150
+        citation_count: 4000
+        abstract: >-
+          Sparse sliding-window attention for long-document transformers.
+
+  - query: large language models few-shot learning
+    domain: natural-language-processing
+    candidates:
+      - title: Language Models are Few-Shot Learners
+        relevance: 2
+        year: 2020
+        venue: NeurIPS
+        doi: 10.48550/arXiv.2005.14165
+        citation_count: 30000
+        abstract: >-
+          GPT-3 shows that scaling autoregressive language models enables strong
+          few-shot learning from in-context examples without fine-tuning.
+      - title: "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer"
+        relevance: 1
+        year: 2020
+        venue: JMLR
+        doi: 10.48550/arXiv.1910.10683
+        citation_count: 15000
+        abstract: >-
+          T5 casts NLP tasks as text-to-text problems, studying transfer learning
+          limits of large pre-trained language models.
+      - title: "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+        relevance: 1
+        year: 2019
+        venue: NAACL
+        doi: 10.48550/arXiv.1810.04805
+        citation_count: 90000
+        abstract: >-
+          Pre-trains deep bidirectional transformers with masked language
+          modeling, establishing large pre-trained language models for transfer.
+      - title: "RoBERTa: A Robustly Optimized BERT Pretraining Approach"
+        relevance: 1
+        year: 2019
+        doi: 10.48550/arXiv.1907.11692
+        citation_count: 20000
+        abstract: >-
+          Revisits BERT pretraining decisions, showing that longer training on
+          more data substantially improves language model quality.
+      - title: Deep Residual Learning for Image Recognition
+        relevance: 0
+        year: 2016
+        venue: CVPR
+        doi: 10.48550/arXiv.1512.03385
+        citation_count: 150000
+        abstract: >-
+          Residual connections for very deep convolutional image recognition
+          networks.
+      - title: Human-Level Control Through Deep Reinforcement Learning
+        relevance: 0
+        year: 2015
+        venue: Nature
+        doi: 10.1038/nature14236
+        citation_count: 25000
+        abstract: >-
+          Deep Q-networks learn to play Atari games from pixels.
+      - title: A Programmable Dual-RNA-Guided DNA Endonuclease in Adaptive Bacterial Immunity
+        relevance: 0
+        year: 2012
+        venue: Science
+        doi: 10.1126/science.1225829
+        citation_count: 15000
+        abstract: >-
+          Cas9 programmed with guide RNA cleaves target DNA sites.
+      - title: Inductive Representation Learning on Large Graphs
+        relevance: 0
+        year: 2017
+        venue: NeurIPS
+        doi: 10.48550/arXiv.1706.02216
+        citation_count: 15000
+        abstract: >-
+          GraphSAGE computes node embeddings by sampling and aggregating
+          neighborhoods on large graphs.
+
+  - query: convolutional neural networks image classification
+    domain: computer-vision
+    candidates:
+      - title: Deep Residual Learning for Image Recognition
+        relevance: 2
+        year: 2016
+        venue: CVPR
+        doi: 10.48550/arXiv.1512.03385
+        citation_count: 150000
+        abstract: >-
+          Introduces residual learning for very deep convolutional neural
+          networks, winning ILSVRC image classification.
+      - title: ImageNet Classification with Deep Convolutional Neural Networks
+        relevance: 2
+        year: 2012
+        venue: NeurIPS
+        citation_count: 120000
+        abstract: >-
+          AlexNet demonstrates that deep convolutional neural networks trained on
+          GPUs dramatically improve large-scale image classification.
+      - title: Very Deep Convolutional Networks for Large-Scale Image Recognition
+        relevance: 1
+        year: 2015
+        venue: ICLR
+        doi: 10.48550/arXiv.1409.1556
+        citation_count: 100000
+        abstract: >-
+          VGG studies the effect of convolutional network depth on large-scale
+          image recognition accuracy using small convolution filters.
+      - title: "ImageNet: A Large-Scale Hierarchical Image Database"
+        relevance: 1
+        year: 2009
+        venue: CVPR
+        citation_count: 50000
+        abstract: >-
+          Introduces the ImageNet database of millions of labeled images that
+          underpins large-scale image classification benchmarks.
+      - title: Attention Is All You Need
+        relevance: 0
+        year: 2017
+        venue: NeurIPS
+        doi: 10.48550/arXiv.1706.03762
+        citation_count: 100000
+        abstract: >-
+          Transformer sequence architecture built on self-attention for machine
+          translation.
+      - title: Language Models are Few-Shot Learners
+        relevance: 0
+        year: 2020
+        venue: NeurIPS
+        doi: 10.48550/arXiv.2005.14165
+        citation_count: 30000
+        abstract: >-
+          Scaling language models enables few-shot task performance from
+          in-context examples.
+      - title: Multiplex Genome Engineering Using CRISPR/Cas Systems
+        relevance: 0
+        year: 2013
+        venue: Science
+        doi: 10.1126/science.1231143
+        citation_count: 14000
+        abstract: >-
+          CRISPR/Cas9 multiplexed targeted genome editing in mammalian cells.
+      - title: Proximal Policy Optimization Algorithms
+        relevance: 0
+        year: 2017
+        doi: 10.48550/arXiv.1707.06347
+        citation_count: 20000
+        abstract: >-
+          Clipped-objective policy gradient methods for reinforcement learning.
