@@ -21,6 +21,7 @@ from ..research.query_expansion import QueryExpansionStage
 from ..research.query_understanding import QueryUnderstandingStage
 from ..research.ranking import RankingStage
 from ..research.relevance_scoring import RelevanceScoringStage
+from ..research.reranker import RerankStage
 from ..retrieval.deduplication import DeduplicationStage
 from ..retrieval.snowball import SnowballStage
 from ..retrieval.models import (
@@ -48,6 +49,7 @@ def build_pipeline(settings: AppSettings) -> ResearchPipeline:
             DeduplicationStage(),
             RankingStage(),
             SnowballStage(),
+            RerankStage(),
             RelevanceScoringStage(),
             ClusteringStage(),
             SynthesisStage(),
