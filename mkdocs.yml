@@ -79,10 +79,12 @@ nav:
           - architecture/stages/snowball.md
           - architecture/stages/rerank.md
           - architecture/stages/relevance-scoring.md
+          - architecture/stages/research-loop.md
           - architecture/stages/fulltext.md
           - architecture/stages/clustering.md
           - architecture/stages/synthesis.md
           - architecture/stages/gap-analysis.md
+          - architecture/stages/verification.md
           - architecture/stages/citation-export.md
           - architecture/stages/report-generation.md
   - Configuration:

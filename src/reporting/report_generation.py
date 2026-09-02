@@ -17,6 +17,7 @@ from ..retrieval.models import (
     PaperCluster,
     RankedPaper,
     SynthesisResult,
+    VerificationSummary,
 )
 
 
@@ -140,6 +141,11 @@ def assemble_report(ctx: PipelineContext, exports: dict[str, str]) -> EnhancedRe
     elif synthesis:
         gaps.extend(synthesis.gaps)
 
+    verification_raw = ctx.get_artifact("verification_summary")
+    verification = (
+        VerificationSummary.model_validate(verification_raw) if verification_raw else None
+    )
+
     report = EnhancedResearchReport(
         query=ctx.query,
         executive_summary=_build_executive_summary(
@@ -150,6 +156,7 @@ def assemble_report(ctx: PipelineContext, exports: dict[str, str]) -> EnhancedRe
             ranked_papers=ranked_papers,
             relevance_config=ctx.config.relevance_scoring,
         ),
+        verification=verification,
         papers=analyses,
         clusters=clusters,
         synthesis=synthesis,

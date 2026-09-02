@@ -95,12 +95,24 @@ pipeline:
     snowball: true
     rerank: true
     relevance_scoring: true
+    research_loop: true
     fulltext: true
     clustering: true
     synthesis: true
     gap_analysis: true
+    verification: true
     citation_export: true
     report_generation: true
+
+research_loop:
+  enabled: true
+  max_iterations: 1
+  min_sufficient_papers: 6
+  max_follow_up_queries: 3
+
+verification:
+  enabled: true
+  min_term_coverage: 0.5
 
 fulltext:
   enabled: true

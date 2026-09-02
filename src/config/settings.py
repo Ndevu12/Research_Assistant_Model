@@ -151,6 +151,22 @@ class RetrievalConfig(BaseModel):
     )
 
 
+class ResearchLoopConfig(BaseModel):
+    """Iterative coverage-driven retrieval refinement."""
+
+    enabled: bool = True
+    max_iterations: int = 1
+    min_sufficient_papers: int = 6
+    max_follow_up_queries: int = 3
+
+
+class VerificationConfig(BaseModel):
+    """Claim verification against paper sources before report generation."""
+
+    enabled: bool = True
+    min_term_coverage: float = 0.5
+
+
 class FulltextConfig(BaseModel):
     """Open-access full-text grounding for top-ranked papers."""
 
@@ -200,10 +216,12 @@ class PipelineConfig(BaseModel):
             "snowball": True,
             "rerank": True,
             "relevance_scoring": True,
+            "research_loop": True,
             "fulltext": True,
             "clustering": True,
             "synthesis": True,
             "gap_analysis": True,
+            "verification": True,
             "citation_export": True,
             "report_generation": True,
         }
@@ -280,6 +298,8 @@ class AppSettings(BaseSettings):
     snowball: SnowballConfig = Field(default_factory=SnowballConfig)
     rerank: RerankConfig = Field(default_factory=RerankConfig)
     fulltext: FulltextConfig = Field(default_factory=FulltextConfig)
+    research_loop: ResearchLoopConfig = Field(default_factory=ResearchLoopConfig)
+    verification: VerificationConfig = Field(default_factory=VerificationConfig)
     pipeline: PipelineConfig = Field(default_factory=PipelineConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     synthesis: SynthesisConfig = Field(default_factory=SynthesisConfig)
