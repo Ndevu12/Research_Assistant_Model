@@ -8,7 +8,7 @@ import pytest
 from src.config.settings import AppSettings
 from src.evaluation.citation_validity import check_citation_validity
 from src.evaluation.dataset import load_golden_dataset
-from src.evaluation.harness import format_report, run_golden_evaluation
+from src.evaluation.harness import format_report, format_report_json, run_golden_evaluation
 from src.evaluation.metrics import mrr, ndcg_at_k, recall_at_k
 from src.retrieval.models import RetrievedPaper
 
@@ -68,7 +68,9 @@ class TestGoldenDataset:
     def test_dataset_loads_and_is_well_formed(self) -> None:
         dataset = load_golden_dataset()
 
-        assert len(dataset.queries) >= 5
+        assert len(dataset.queries) >= 14
+        domains = {query.domain for query in dataset.queries}
+        assert len(domains) >= 6, "golden set should span multiple domains"
         for query in dataset.queries:
             assert len(query.candidates) >= 6
             assert query.relevant_titles, f"query {query.query!r} has no relevant papers"
@@ -79,9 +81,10 @@ class TestGoldenDataset:
 class TestGoldenEvaluation:
     """Regression floors for ranking quality on the golden set.
 
-    Floors are set below the measured keyword-only baseline (mean R@5 0.93,
-    nDCG@10 0.98, MRR 1.0) so they hold with or without the embedding
-    backend; a change that drops below them has genuinely hurt ranking.
+    Floors are set below the measured keyword-only baseline (fourteen
+    queries: mean R@5 0.94, nDCG@10 0.97, MRR 1.00, citation validity 92%)
+    so they hold with or without the embedding backend; a change that drops
+    below them has genuinely hurt ranking.
     """
 
     @pytest.fixture(scope="class")
@@ -105,3 +108,20 @@ class TestGoldenEvaluation:
         rendered = format_report(report)
         assert "Golden-set evaluation" in rendered
         assert "citation validity" in rendered
+        assert "domain" in rendered
+
+    def test_json_report_carries_means_and_queries(self, report) -> None:
+        import json
+
+        payload = json.loads(format_report_json(report))
+
+        assert len(payload["queries"]) == len(report.queries)
+        assert set(payload["means"]) == {
+            "recall_at_5",
+            "recall_at_10",
+            "ndcg_at_10",
+            "mrr",
+            "citation_validity_rate",
+        }
+        assert payload["means"]["mrr"] == pytest.approx(report.mean_mrr)
+        assert payload["queries"][0]["domain"]
