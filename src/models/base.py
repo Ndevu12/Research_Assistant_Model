@@ -25,6 +25,8 @@ class AgentRole(str, Enum):
     GAP_ANALYSIS = "gap_analysis"
     INTERACTIVE = "interactive"
     ANALYSIS = "analysis"
+    COVERAGE = "coverage"
+    VERIFICATION = "verification"
 
 
 ROLE_SYSTEM_PROMPTS: dict[AgentRole, str] = {
@@ -58,6 +60,19 @@ ROLE_SYSTEM_PROMPTS: dict[AgentRole, str] = {
         '"gaps" (list of strings), "opportunities" (list of strings), '
         '"underexplored_areas" (list of strings). '
         "Do not include conversational filler."
+    ),
+    AgentRole.COVERAGE: (
+        "You assess literature-search coverage. Given a research query and the "
+        "papers found so far, respond with ONLY a JSON object with keys: "
+        '"sufficient" (boolean), "missing_aspects" (list of strings), '
+        '"follow_up_queries" (list of strings — concise academic search phrases '
+        "targeting the missing aspects). Do not include conversational filler."
+    ),
+    AgentRole.VERIFICATION: (
+        "You verify claims against source material. Respond with ONLY a JSON "
+        'object with key "unsupported_claim_numbers" (list of integers naming '
+        "the claims the sources do not support). Judge strictly from the given "
+        "sources. Do not include conversational filler."
     ),
     AgentRole.INTERACTIVE: (
         "You are a research assistant helping refine literature review follow-up questions. "

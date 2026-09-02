@@ -7,6 +7,7 @@ from typing import Optional
 
 from ..analysis.gap_analysis import GapAnalysisStage
 from ..analysis.synthesis import SynthesisStage
+from ..analysis.verification import VerificationStage
 from ..config.settings import AppSettings
 from ..core.context import ResearchSession
 from ..core.events import get_event_bus
@@ -21,6 +22,7 @@ from ..research.query_expansion import QueryExpansionStage
 from ..research.query_understanding import QueryUnderstandingStage
 from ..research.ranking import RankingStage
 from ..research.relevance_scoring import RelevanceScoringStage
+from ..research.research_loop import ResearchLoopStage
 from ..research.reranker import RerankStage
 from ..fulltext.stage import FulltextStage
 from ..retrieval.deduplication import DeduplicationStage
@@ -52,10 +54,12 @@ def build_pipeline(settings: AppSettings) -> ResearchPipeline:
             SnowballStage(),
             RerankStage(),
             RelevanceScoringStage(),
+            ResearchLoopStage(),
             FulltextStage(),
             ClusteringStage(),
             SynthesisStage(),
             GapAnalysisStage(),
+            VerificationStage(),
             CitationExportStage(),
             ReportGenerationStage(),
         ],

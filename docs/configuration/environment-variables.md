@@ -122,7 +122,7 @@ Full weight list: [YAML reference](yaml-reference.md#ranking).
 | `RA_PIPELINE__SYNTHESIS_TIMEOUT_SECONDS` | `600` | Synthesis stage timeout |
 | `RA_PIPELINE__ENABLED_STAGES__<STAGE>` | `true` | Disable individual pipeline stages |
 
-Stage names: `query_understanding`, `query_expansion`, `retrieval`, `deduplication`, `ranking`, `snowball`, `rerank`, `relevance_scoring`, `fulltext`, `clustering`, `synthesis`, `gap_analysis`, `citation_export`, `report_generation`. See [Stage toggles](stage-toggles.md).
+Stage names: `query_understanding`, `query_expansion`, `retrieval`, `deduplication`, `ranking`, `snowball`, `rerank`, `relevance_scoring`, `research_loop`, `fulltext`, `clustering`, `synthesis`, `gap_analysis`, `verification`, `citation_export`, `report_generation`. See [Stage toggles](stage-toggles.md).
 
 ---
 
@@ -141,8 +141,12 @@ Stage names: `query_understanding`, `query_expansion`, `retrieval`, `deduplicati
 | `RA_FULLTEXT__MAX_PAPERS` | `5` | Top papers attempted per run |
 | `RA_FULLTEXT__MAX_PDF_MB` | `15` | Per-PDF download size cap |
 | `RA_FULLTEXT__TOP_CHUNKS_PER_PAPER` | `3` | Passages retrieved per paper |
+| `RA_RESEARCH_LOOP__ENABLED` | `true` | Coverage-driven retrieval refinement |
+| `RA_RESEARCH_LOOP__MAX_ITERATIONS` | `1` | Refinement rounds per run |
+| `RA_VERIFICATION__ENABLED` | `true` | Claim verification before reporting |
+| `RA_VERIFICATION__MIN_TERM_COVERAGE` | `0.5` | Heuristic support threshold |
 
-Full key lists live on the stage pages: [Snowball](../architecture/stages/snowball.md), [Rerank](../architecture/stages/rerank.md), [Fulltext](../architecture/stages/fulltext.md).
+Full key lists live on the stage pages: [Snowball](../architecture/stages/snowball.md), [Rerank](../architecture/stages/rerank.md), [Fulltext](../architecture/stages/fulltext.md), [Research loop](../architecture/stages/research-loop.md), [Verification](../architecture/stages/verification.md).
 
 ---
 
