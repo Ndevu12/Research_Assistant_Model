@@ -143,7 +143,7 @@ class VerificationStage:
         }
         passages: dict[str, list[str]] = ctx.get_artifact("fulltext_passages") or {}
 
-        use_llm = ctx.config.synthesis.llm_enabled and ctx.config.llm.structured_outputs
+        use_llm = ctx.config.synthesis.llm_enabled
         method = "llm" if use_llm else "heuristic"
 
         checked = 0
