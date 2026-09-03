@@ -66,7 +66,6 @@ class LLMConfig(BaseModel):
     api_key: str | None = None
     temperature: float = 0.2
     timeout_seconds: int = 120
-    structured_outputs: bool = True
 
 
 class EmbeddingConfig(BaseModel):
@@ -237,8 +236,6 @@ class SynthesisConfig(BaseModel):
     llm_mode: LlmMode = "auto"
     llm_enabled: bool = False
     max_llm_papers: int = 3
-    extraction_max_retries: int = 0
-    collective_max_retries: int = 0
     concurrency: int = 2
     circuit_breaker_failures: int = 2
 
