@@ -95,7 +95,7 @@ async def assess_coverage(
         min_sufficient_papers=config.min_sufficient_papers,
     )
 
-    if not (ctx.config.synthesis.llm_enabled and ctx.config.llm.structured_outputs):
+    if not ctx.config.synthesis.llm_enabled:
         return heuristic
 
     from ..models.structured import try_run_structured
