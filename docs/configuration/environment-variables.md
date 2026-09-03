@@ -30,7 +30,6 @@ Boolean env values accept standard truthy strings (`true`, `1`, `yes`).
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RA_LLM__PROVIDER` | `ollama` | `ollama`, `openai`, or `anthropic` |
-| `RA_LLM__STRUCTURED_OUTPUTS` | `true` | Schema-enforced LLM output; disable to use the legacy JSON-repair path |
 | `RA_LLM__MODEL` | `auto` | Model name; `auto` selects from `config/ollama_models.yaml` (Ollama only) |
 | `RA_LLM__BASE_URL` | `http://localhost:11434` | API base URL (Ollama OpenAI-compatible endpoint) |
 

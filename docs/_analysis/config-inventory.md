@@ -199,8 +199,6 @@ Source: `src/config/settings.py`, `config/*.yaml`, `.env.example`, `src/config/r
 | `llm_mode` | `"auto"` | |
 | `llm_enabled` | `False` | Resolved at pipeline start |
 | `max_llm_papers` | `3` | May be overridden by Ollama catalog hints |
-| `extraction_max_retries` | `0` | |
-| `collective_max_retries` | `0` | |
 | `concurrency` | `2` | |
 | `circuit_breaker_failures` | `2` | |
 
