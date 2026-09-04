@@ -42,9 +42,9 @@ All LLM integration tests **mock pydantic-ai** — no Ollama or cloud API requir
 
 | Pattern | Example location |
 |---------|------------------|
-| `patch create_llm_agent` | `test_synthesis.py` |
+| `patch src.models.structured.try_run_structured` | `test_synthesis.py`, `test_structured_outputs.py` |
 | `patch` OpenAI/Pydantic AI constructors | `test_llm_providers.py` |
-| `MagicMock(EnhancedResponseHandler)` | synthesis workflow tests |
+| `TestModel` / `FunctionModel` from pydantic-ai | `test_structured_outputs.py` |
 
 This keeps CI fast and deterministic. Manual LLM verification uses the CLI with real providers.
 
@@ -128,7 +128,6 @@ Document these when adding tests:
 |-----|--------|
 | Query understanding | No dedicated unit test file |
 | API routes | Scaffold tests only — no HTTP integration tests |
-| `EnhancedResponseHandler` | Subcomponents tested; not end-to-end |
 | Live LLM / API | All mocked in unit tests |
 | Subprocess tests | Marked `@pytest.mark.slow`; may skip in tight CI |
 

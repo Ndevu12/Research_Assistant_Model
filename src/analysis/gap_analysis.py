@@ -8,10 +8,8 @@ import time
 from typing import TYPE_CHECKING
 
 from ..core.context import PipelineContext, StageResult
-from ..models import AgentFactory, AgentRole
+from ..models import AgentRole
 from ..retrieval.models import GapAnalysisResult, PaperCluster, SynthesisResult
-from ..utils.enhanced_response_handler import EnhancedResponseHandler
-from ..utils.response_models import RequestContext, ResponseHandlerConfig
 
 if TYPE_CHECKING:
     from ..config.settings import LLMConfig
@@ -98,8 +96,6 @@ async def analyze_gaps(
     clusters: list[PaperCluster] | None = None,
     *,
     llm_config: LLMConfig | None = None,
-    handler: EnhancedResponseHandler | None = None,
-    session_id: str = "",
 ) -> GapAnalysisResult:
     """Refine synthesis gaps into prioritized research opportunities."""
     clusters = clusters or []
@@ -117,38 +113,16 @@ async def analyze_gaps(
     if reporter is not None:
         reporter.set_activity("Analyzing research gaps with AI…")
 
-    if llm_config.structured_outputs:
-        from ..models.structured import try_run_structured
+    from ..models.structured import try_run_structured
 
-        gap_result = await try_run_structured(
-            AgentRole.GAP_ANALYSIS,
-            prompt,
-            GapAnalysisResult,
-            llm_config,
-        )
-        if gap_result is not None:
-            return gap_result
-        return _heuristic_gap_analysis(synthesis, query, clusters)
-
-    agent = AgentFactory(llm_config).create_agent(AgentRole.GAP_ANALYSIS, config=llm_config)
-    response_handler = handler or EnhancedResponseHandler(ResponseHandlerConfig())
-    context = RequestContext(
-        user_query=query,
-        model_name=llm_config.model,
-        session_id=session_id,
-    )
-
-    result = await response_handler.process_structured_response(
-        agent,
+    gap_result = await try_run_structured(
+        AgentRole.GAP_ANALYSIS,
         prompt,
-        context,
         GapAnalysisResult,
-        schema_description=(
-            '{"gaps": ["..."], "opportunities": ["..."], "underexplored_areas": ["..."]}'
-        ),
+        llm_config,
     )
-    if result.success and isinstance(result.data, GapAnalysisResult):
-        return result.data
+    if gap_result is not None:
+        return gap_result
     return _heuristic_gap_analysis(synthesis, query, clusters)
 
 
@@ -156,9 +130,6 @@ class GapAnalysisStage:
     """Pipeline stage that expands synthesis gaps into research opportunities."""
 
     name = "gap_analysis"
-
-    def __init__(self, handler: EnhancedResponseHandler | None = None) -> None:
-        self.handler = handler
 
     async def run(
         self,
@@ -196,8 +167,6 @@ class GapAnalysisStage:
                 synthesis,
                 clusters,
                 llm_config=ctx.config.llm,
-                handler=self.handler,
-                session_id=ctx.session.id,
             )
         except Exception as exc:
             warnings.append(f"Gap analysis failed, using heuristic fallback: {exc}")

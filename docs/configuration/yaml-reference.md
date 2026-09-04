@@ -183,8 +183,6 @@ Set `cache_enabled: true` to reuse cached retrieval results keyed by query + ena
 synthesis:
   llm_mode: auto
   max_llm_papers: 3
-  extraction_max_retries: 0
-  collective_max_retries: 0
   concurrency: 2
   circuit_breaker_failures: 2
 ```

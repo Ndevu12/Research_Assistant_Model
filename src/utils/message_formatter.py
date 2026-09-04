@@ -303,84 +303,6 @@ class MessageFormatter:
         return f"{service}: Max retries exceeded. Skipping this source."
 
     @classmethod
-    def retry_attempt_message(cls, attempt: int, max_retries: int, error_type: str) -> str:
-        """Format retry attempt messages.
-        
-        Args:
-            attempt: Current attempt number.
-            max_retries: Maximum number of retries.
-            error_type: Type of error that triggered retry.
-            
-        Returns:
-            str: Formatted retry message.
-        """
-        return (
-            f"⟳ Retry attempt {attempt}/{max_retries}\n"
-            f"   Error: {error_type}\n"
-            f"   Adjusting request and trying again..."
-        )
-    
-    @classmethod
-    def recovery_attempt_message(cls) -> str:
-        """Format recovery attempt messages.
-        
-        Returns:
-            str: Formatted recovery message.
-        """
-        return (
-            "⚠ Unable to parse complete response.\n"
-            "   Attempting partial recovery from available data..."
-        )
-    
-    @classmethod
-    def content_quality_warning(cls, issues: list[str]) -> str:
-        """Format content quality warning messages.
-        
-        Args:
-            issues: List of content quality issues.
-            
-        Returns:
-            str: Formatted warning message.
-        """
-        issues_text = "\n   • ".join(issues[:3])  # Show top 3 issues
-        return (
-            f"⚠ Content quality issues detected:\n"
-            f"   • {issues_text}\n"
-            f"   Results may be incomplete or require refinement."
-        )
-    
-    @classmethod
-    def enhancement_attempt_message(cls, strategy: str) -> str:
-        """Format result enhancement attempt messages.
-        
-        Args:
-            strategy: Enhancement strategy being used.
-            
-        Returns:
-            str: Formatted enhancement message.
-        """
-        return (
-            f"✓ Attempting to enhance results using: {strategy}\n"
-            f"   Refining query and requesting additional analysis..."
-        )
-    
-    @classmethod
-    def enhancement_success_message(cls, improvement: float) -> str:
-        """Format successful enhancement messages.
-        
-        Args:
-            improvement: Improvement score (0.0-1.0).
-            
-        Returns:
-            str: Formatted success message.
-        """
-        percentage = int(improvement * 100)
-        return (
-            f"✓ Results enhanced successfully\n"
-            f"   Quality improvement: +{percentage}%"
-        )
-    
-    @classmethod
     def partial_success_message(cls, complete_count: int, total_count: int) -> str:
         """Format partial success messages.
         
@@ -412,36 +334,6 @@ class MessageFormatter:
             f"💡 Query suggestions for better results:\n"
             f"   • {suggestions_text}\n"
             f"   Try refining your query with these terms for more relevant results."
-        )
-    
-    @classmethod
-    def model_adaptation_message(cls, model_type: str) -> str:
-        """Format model adaptation messages.
-        
-        Args:
-            model_type: Type of model being adapted for.
-            
-        Returns:
-            str: Formatted adaptation message.
-        """
-        return f"🔧 Adapting response format for {model_type} model..."
-    
-    @classmethod
-    def fallback_processing_message(cls, method: str, confidence: float) -> str:
-        """Format fallback processing messages.
-        
-        Args:
-            method: Fallback processing method used.
-            confidence: Confidence score (0.0-1.0).
-            
-        Returns:
-            str: Formatted fallback message.
-        """
-        confidence_pct = int(confidence * 100)
-        return (
-            f"⚠ Using fallback processing: {method}\n"
-            f"   Confidence: {confidence_pct}%\n"
-            f"   Results extracted from unstructured response."
         )
     
     @classmethod
