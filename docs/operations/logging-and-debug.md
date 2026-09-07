@@ -104,10 +104,6 @@ Use these dumps to inspect why a stage was partial or what papers were retrieved
 
 6. **Correlate with combined log** using timestamps and session ID in log lines.
 
-## Quality metrics (optional)
-
-`src/utils/quality_monitor.py` can write additional JSON to `logs/quality_metrics_<timestamp>.json` when quality monitoring is active during LLM stages.
-
 ## What debug does *not* include
 
 - Raw HTTP response bodies from retrieval providers (only normalized papers in artifacts)
