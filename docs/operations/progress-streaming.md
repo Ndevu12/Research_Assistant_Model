@@ -64,7 +64,7 @@ sequenceDiagram
     Bus->>Rep: _on_stage_complete
 ```
 
-Stages call `set_activity()` / `set_llm_preview()` during long operations (especially synthesis). LLM calls use `stream_agent_text()` which delegates to `stream_agent_response()` when a reporter is active.
+Stages call `set_activity()` / `set_llm_preview()` during long operations (especially synthesis). Structured LLM calls report per-paper activity through `set_activity()`; `stream_agent_text()` remains available for streaming free-text agent runs and delegates to `stream_agent_response()` when a reporter is active.
 
 ## Context variable
 

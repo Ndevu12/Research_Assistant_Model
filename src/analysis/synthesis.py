@@ -8,11 +8,9 @@ import json
 import time
 from typing import TYPE_CHECKING
 
-from pydantic_ai import Agent
-
 from ..core.context import PipelineContext, StageResult
 from ..core.paper_adapters import ensure_ranked_papers
-from ..models import AgentFactory, AgentRole, create_llm_agent
+from ..models import AgentRole
 from ..research.text_utils import extract_core_concepts
 from ..retrieval.models import (
     PaperAnalysis,
@@ -21,15 +19,13 @@ from ..retrieval.models import (
     RankedPaper,
     SynthesisResult,
 )
-from ..utils.enhanced_response_handler import EnhancedResponseHandler
 from ..utils.logging_system import logger
-from ..utils.response_models import RequestContext, ResponseHandlerConfig, RetryConfig
 
 if TYPE_CHECKING:
     from ..config.settings import LLMConfig, SynthesisConfig
 
 
-__all__ = ["create_llm_agent", "SynthesisStage", "extract_papers", "synthesize_collective"]
+__all__ = ["SynthesisStage", "extract_papers", "synthesize_collective"]
 
 HEURISTIC_DISAGREEMENT_PLACEHOLDER = (
     "Cross-paper disagreement analysis limited in heuristic mode."
@@ -287,12 +283,6 @@ def _extractions_to_paper_analyses(
     return analyses
 
 
-def _synthesis_handler_config(max_retries: int) -> ResponseHandlerConfig:
-    return ResponseHandlerConfig(
-        retry_config=RetryConfig(max_retries=max_retries),
-    )
-
-
 def resolve_synthesis_input(data: object, ctx: PipelineContext) -> SynthesisResult:
     """Resolve a synthesis result from stage output or pipeline artifacts."""
     artifact = ctx.get_artifact("synthesis_result")
@@ -343,14 +333,6 @@ def recover_synthesis_output(
     return synthesis
 
 
-def _use_structured_outputs(llm_config: LLMConfig | None) -> bool:
-    if llm_config is not None:
-        return llm_config.structured_outputs
-    from ..config.settings import get_settings
-
-    return get_settings().llm.structured_outputs
-
-
 async def _extract_single_paper_structured(
     paper: RankedPaper,
     query: str,
@@ -380,44 +362,12 @@ async def _extract_single_paper_structured(
     return extraction.model_copy(update=updates), True
 
 
-async def _extract_single_paper(
-    paper: RankedPaper,
-    query: str,
-    agent: Agent,
-    handler: EnhancedResponseHandler,
-    context: RequestContext,
-    passages: list[str] | None = None,
-) -> tuple[PaperExtraction, bool]:
-    prompt = _build_extraction_prompt(paper, query, passages)
-    result = await handler.process_structured_response(
-        agent,
-        prompt,
-        context,
-        PaperExtraction,
-        schema_description=(
-            '{"paper_id": "...", "title": "...", "methodology": ["..."], '
-            '"datasets": ["..."], "benchmarks": ["..."], '
-            '"limitations": ["..."], "findings": ["..."], "evidence": ["..."]}'
-        ),
-    )
-    if result.success and isinstance(result.data, PaperExtraction):
-        extraction = result.data
-        if not extraction.evidence and passages:
-            extraction = extraction.model_copy(
-                update={"evidence": _evidence_from_passages(passages)}
-            )
-        return extraction, True
-    return _heuristic_extraction(paper, passages), False
-
-
 async def extract_papers(
     ranked_papers: list[RankedPaper],
     query: str,
     *,
     llm_config: LLMConfig | None = None,
-    handler: EnhancedResponseHandler | None = None,
     concurrency: int = 4,
-    session_id: str = "",
     synthesis_config: SynthesisConfig | None = None,
     passages: dict[str, list[str]] | None = None,
 ) -> list[PaperExtraction]:
@@ -449,22 +399,6 @@ async def extract_papers(
     llm_targets = ranked_papers[:max_llm_papers]
     heuristic_targets = ranked_papers[max_llm_papers:]
 
-    use_structured = _use_structured_outputs(llm_config)
-    agent = None
-    response_handler = None
-    context = None
-    if not use_structured:
-        # Legacy prose-JSON path with the repair/retry machinery.
-        agent = AgentFactory(llm_config).create_agent(AgentRole.EXTRACTION, config=llm_config)
-        response_handler = handler or EnhancedResponseHandler(
-            _synthesis_handler_config(synthesis_config.extraction_max_retries)
-        )
-        context = RequestContext(
-            user_query=query,
-            model_name=llm_config.model if llm_config else "default",
-            session_id=session_id,
-        )
-
     from ..utils.progress_reporter import get_progress_reporter
 
     semaphore = asyncio.Semaphore(max(concurrency, 1))
@@ -490,22 +424,12 @@ async def extract_papers(
                     f"Analyzing paper {index}/{len(llm_targets)}: {title_preview}…"
                 )
 
-            if use_structured:
-                extraction, llm_success = await _extract_single_paper_structured(
-                    paper,
-                    query,
-                    llm_config,
-                    passages=paper_passages,
-                )
-            else:
-                extraction, llm_success = await _extract_single_paper(
-                    paper,
-                    query,
-                    agent,
-                    response_handler,
-                    context,
-                    passages=paper_passages,
-                )
+            extraction, llm_success = await _extract_single_paper_structured(
+                paper,
+                query,
+                llm_config,
+                passages=paper_passages,
+            )
 
         if llm_success:
             breaker["consecutive_failures"] = 0
@@ -548,8 +472,6 @@ async def synthesize_collective(
     *,
     ranked_papers: list[RankedPaper] | None = None,
     llm_config: LLMConfig | None = None,
-    handler: EnhancedResponseHandler | None = None,
-    session_id: str = "",
     synthesis_config: SynthesisConfig | None = None,
 ) -> SynthesisResult:
     """Pass B — collective cross-paper synthesis."""
@@ -581,42 +503,16 @@ async def synthesize_collective(
             f"Synthesizing insights across {len(extractions)} paper(s)…"
         )
 
-    if _use_structured_outputs(llm_config):
-        from ..models.structured import try_run_structured
+    from ..models.structured import try_run_structured
 
-        synthesis = await try_run_structured(
-            AgentRole.SYNTHESIS,
-            prompt,
-            SynthesisResult,
-            llm_config,
-        )
-        if synthesis is not None:
-            return synthesis
-        logger.warning("LLM collective synthesis failed; using heuristic fallback")
-        return _heuristic_synthesis(query, extractions, clusters, ranked_papers=ranked_papers)
-
-    agent = AgentFactory(llm_config).create_agent(AgentRole.SYNTHESIS, config=llm_config)
-    response_handler = handler or EnhancedResponseHandler(
-        _synthesis_handler_config(synthesis_config.collective_max_retries)
-    )
-    context = RequestContext(
-        user_query=query,
-        model_name=llm_config.model,
-        session_id=session_id,
-    )
-
-    result = await response_handler.process_structured_response(
-        agent,
+    synthesis = await try_run_structured(
+        AgentRole.SYNTHESIS,
         prompt,
-        context,
         SynthesisResult,
-        schema_description=(
-            '{"agreements": ["..."], "disagreements": ["..."], "trends": ["..."], '
-            '"gaps": ["..."], "datasets": ["..."], "methodologies": ["..."]}'
-        ),
+        llm_config,
     )
-    if result.success and isinstance(result.data, SynthesisResult):
-        return result.data
+    if synthesis is not None:
+        return synthesis
     logger.warning("LLM collective synthesis failed; using heuristic fallback")
     return _heuristic_synthesis(query, extractions, clusters, ranked_papers=ranked_papers)
 
@@ -627,9 +523,7 @@ async def run_synthesis(
     clusters: list[PaperCluster],
     *,
     llm_config: LLMConfig | None = None,
-    handler: EnhancedResponseHandler | None = None,
     concurrency: int = 4,
-    session_id: str = "",
     synthesis_config: SynthesisConfig | None = None,
     passages: dict[str, list[str]] | None = None,
 ) -> tuple[SynthesisResult, list[PaperExtraction], list[PaperAnalysis]]:
@@ -643,9 +537,7 @@ async def run_synthesis(
         ranked_papers,
         query,
         llm_config=llm_config,
-        handler=handler,
         concurrency=synthesis_config.concurrency or concurrency,
-        session_id=session_id,
         synthesis_config=synthesis_config,
         passages=passages,
     )
@@ -655,8 +547,6 @@ async def run_synthesis(
         clusters,
         ranked_papers=ranked_papers,
         llm_config=llm_config,
-        handler=handler,
-        session_id=session_id,
         synthesis_config=synthesis_config,
     )
     paper_analyses = _extractions_to_paper_analyses(extractions, ranked_papers)
@@ -668,12 +558,7 @@ class SynthesisStage:
 
     name = "synthesis"
 
-    def __init__(
-        self,
-        handler: EnhancedResponseHandler | None = None,
-        concurrency: int = 4,
-    ) -> None:
-        self.handler = handler
+    def __init__(self, concurrency: int = 4) -> None:
         self.concurrency = concurrency
 
     async def run(
@@ -724,9 +609,7 @@ class SynthesisStage:
                 data,
                 passages=ctx.get_artifact("fulltext_passages") or {},
                 llm_config=ctx.config.llm,
-                handler=self.handler,
                 concurrency=ctx.config.synthesis.concurrency,
-                session_id=ctx.session.id,
                 synthesis_config=ctx.config.synthesis,
             )
         except (asyncio.TimeoutError, asyncio.CancelledError) as exc:

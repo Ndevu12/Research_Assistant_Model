@@ -5,8 +5,8 @@ Instead of asking the model for JSON in prose and repairing whatever comes
 back, the schema is attached to the agent (``output_type``) and pydantic-ai
 enforces it natively — invalid output triggers the framework's own retry
 with validation feedback, and the caller receives a typed object or an
-exception. This replaces the string-repair path for providers that support
-structured outputs; heuristic fallbacks remain the safety net.
+exception. This is the only LLM call path — the legacy prose-JSON repair
+machinery has been retired; heuristic fallbacks remain the safety net.
 """
 
 from __future__ import annotations
