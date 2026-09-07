@@ -40,10 +40,6 @@ def _ranked(title: str, abstract: str = "Findings here.") -> RankedPaper:
     )
 
 
-def _structured_llm() -> LLMConfig:
-    return LLMConfig(structured_outputs=True)
-
-
 class TestRunStructured:
     async def test_returns_schema_valid_output_with_test_model(self) -> None:
         result = await run_structured(
@@ -98,7 +94,7 @@ class TestStructuredExtraction:
             extractions = await extract_papers(
                 ranked,
                 "query",
-                llm_config=_structured_llm(),
+                llm_config=LLMConfig(),
                 synthesis_config=AppSettings(
                     synthesis={"llm_enabled": True, "max_llm_papers": 1}
                 ).synthesis,
@@ -121,7 +117,7 @@ class TestStructuredExtraction:
             extractions = await extract_papers(
                 ranked,
                 "query",
-                llm_config=_structured_llm(),
+                llm_config=LLMConfig(),
                 concurrency=1,
                 synthesis_config=AppSettings(
                     synthesis={
@@ -153,7 +149,7 @@ class TestStructuredSynthesisAndGaps:
                 "query",
                 [PaperExtraction(paper_id="a", title="A", findings=["F"])],
                 [],
-                llm_config=_structured_llm(),
+                llm_config=LLMConfig(),
                 synthesis_config=AppSettings(
                     synthesis={"llm_enabled": True}
                 ).synthesis,
@@ -172,7 +168,7 @@ class TestStructuredSynthesisAndGaps:
             result = await analyze_gaps(
                 "query",
                 SynthesisResult(gaps=["G"]),
-                llm_config=_structured_llm(),
+                llm_config=LLMConfig(),
             )
 
         assert result is expected
@@ -185,7 +181,7 @@ class TestStructuredSynthesisAndGaps:
             result = await analyze_gaps(
                 "query",
                 SynthesisResult(gaps=["Known gap"]),
-                llm_config=_structured_llm(),
+                llm_config=LLMConfig(),
             )
 
         assert "Known gap" in result.gaps
@@ -197,7 +193,6 @@ class TestStructuredExpansion:
         from src.config.settings import get_settings
 
         get_settings.cache_clear()
-        monkeypatch.setenv("RA_LLM__STRUCTURED_OUTPUTS", "true")
 
         async def fake_run(role, prompt, output_type, config=None, **kwargs):
             assert role is AgentRole.EXPANSION

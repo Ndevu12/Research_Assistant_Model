@@ -176,16 +176,16 @@ flowchart TD
   RESOLVED[ctx.config after resolve_effective_settings]
 
   RESOLVED --> QE{query_expansion.llm_enabled?}
-  QE -->|yes| QE_AGENT[AgentFactory EXPANSION stream_agent_text]
+  QE -->|yes| QE_AGENT[run_structured EXPANSION]
   QE -->|no| QE_SKIP[heuristics only]
 
   RESOLVED --> SY{synthesis.llm_enabled?}
-  SY -->|yes| SY_A[AgentFactory EXTRACTION up to max_llm_papers]
-  SY_A --> SY_B[AgentFactory SYNTHESIS collective]
+  SY -->|yes| SY_A[try_run_structured EXTRACTION up to max_llm_papers]
+  SY_A --> SY_B[try_run_structured SYNTHESIS collective]
   SY -->|no| SY_H[heuristic extraction + synthesis]
 
   RESOLVED --> GA{synthesis.llm_enabled?}
-  GA -->|yes| GA_AGENT[AgentFactory GAP_ANALYSIS structured response]
+  GA -->|yes| GA_AGENT[try_run_structured GAP_ANALYSIS]
   GA -->|no| GA_H[heuristic from synthesis fields]
 ```
 

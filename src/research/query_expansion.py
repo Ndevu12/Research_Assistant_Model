@@ -277,51 +277,31 @@ async def expand_query_llm(
 
     try:
         from ..config.settings import get_settings
-        from ..models import AgentFactory, AgentRole
+        from ..models import AgentRole
+        from ..models.structured import run_structured
+        from ..utils.progress_reporter import get_progress_reporter
 
         settings = get_settings()
         prompt = (
             f"Expand this research query into {config.max_variants} search variants "
             f"and {config.max_sub_questions} sub-questions: {query}"
         )
-        from ..utils.progress_reporter import get_progress_reporter, stream_agent_text
 
         reporter = get_progress_reporter()
         if reporter is not None:
             reporter.set_activity("Expanding query with AI…")
 
-        if settings.llm.structured_outputs:
-            from ..models.structured import run_structured
-
-            suggestions = await run_structured(
-                AgentRole.EXPANSION,
-                prompt,
-                _ExpansionSuggestions,
-                settings.llm,
-            )
-            return (
-                [str(item) for item in suggestions.variants][: config.max_variants],
-                [str(item) for item in suggestions.sub_questions][
-                    : config.max_sub_questions
-                ],
-            )
-
-        agent = AgentFactory(settings.llm).create_agent(AgentRole.EXPANSION, config=settings.llm)
-        raw_output = await stream_agent_text(
-            agent,
+        suggestions = await run_structured(
+            AgentRole.EXPANSION,
             prompt,
-            label="Expanding search queries…",
+            _ExpansionSuggestions,
+            settings.llm,
         )
-        import json
-
-        from ..retrieval.helpers_modules.json_extraction import extract_and_clean_json
-
-        payload = json.loads(extract_and_clean_json(raw_output))
-        variants = payload.get("variants", [])
-        sub_questions = payload.get("sub_questions", [])
         return (
-            [str(item) for item in variants][: config.max_variants],
-            [str(item) for item in sub_questions][: config.max_sub_questions],
+            [str(item) for item in suggestions.variants][: config.max_variants],
+            [str(item) for item in suggestions.sub_questions][
+                : config.max_sub_questions
+            ],
         )
     except Exception:
         return [], []

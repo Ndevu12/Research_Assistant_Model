@@ -39,8 +39,8 @@ from src.retrieval.models import (
     RetrievedPaper,
     SynthesisResult,
 )
-from src.utils.enhanced_response_handler import EnhancedResponseHandler
-from src.utils.response_models import ProcessingPath, ProcessingResult
+
+STRUCTURED_TARGET = "src.models.structured.try_run_structured"
 
 
 def _paper(title: str, **kwargs: object) -> RetrievedPaper:
@@ -56,40 +56,22 @@ def _ranked(title: str, **kwargs: object) -> RankedPaper:
     )
 
 
-def _mock_handler_success(data: object) -> EnhancedResponseHandler:
-    handler = MagicMock(spec=EnhancedResponseHandler)
-    handler.process_structured_response = AsyncMock(
-        return_value=ProcessingResult(
-            success=True,
-            data=data,
-            processing_path=ProcessingPath.DIRECT_SUCCESS,
-        )
-    )
-    return handler
+def _structured_mock(*results: object) -> AsyncMock:
+    """AsyncMock standing in for try_run_structured.
 
-
-def _mock_handler_failure() -> EnhancedResponseHandler:
-    handler = MagicMock(spec=EnhancedResponseHandler)
-    handler.process_structured_response = AsyncMock(
-        return_value=ProcessingResult(
-            success=False,
-            processing_path=ProcessingPath.COMPLETE_FAILURE,
-        )
-    )
-    return handler
-
-
-def _legacy_llm_config() -> LLMConfig:
-    """LLM config exercising the legacy prose-JSON handler path."""
-    return LLMConfig(structured_outputs=False)
+    With one result it is returned for every call; with several they are
+    consumed in call order. ``None`` triggers the caller's heuristic fallback,
+    exactly like a failed structured call.
+    """
+    if len(results) == 1:
+        return AsyncMock(return_value=results[0])
+    return AsyncMock(side_effect=list(results))
 
 
 def _llm_synthesis_config(**overrides: object):
     config = {
         "llm_enabled": True,
         "max_llm_papers": 10,
-        "extraction_max_retries": 0,
-        "collective_max_retries": 0,
         "concurrency": 2,
     }
     config.update(overrides)
@@ -288,41 +270,38 @@ class TestHeuristicSynthesis:
 
 class TestSynthesisWorkflow:
     @pytest.mark.asyncio
-    async def test_extract_papers_uses_handler(self) -> None:
+    async def test_extract_papers_uses_structured_llm(self) -> None:
         ranked = [_ranked("Paper One", abstract="Findings here.")]
         expected = PaperExtraction(
             paper_id="Paper One",
             title="Paper One",
             findings=["Finding"],
         )
-        handler = _mock_handler_success(expected)
+        structured = _structured_mock(expected)
 
-        extractions = await extract_papers(
-            ranked,
-            "test query",
-            llm_config=_legacy_llm_config(),
-            handler=handler,
-            concurrency=1,
-            synthesis_config=_llm_synthesis_config(max_llm_papers=1),
-        )
+        with patch(STRUCTURED_TARGET, structured):
+            extractions = await extract_papers(
+                ranked,
+                "test query",
+                concurrency=1,
+                synthesis_config=_llm_synthesis_config(max_llm_papers=1),
+            )
 
         assert len(extractions) == 1
         assert extractions[0].title == "Paper One"
-        handler.process_structured_response.assert_awaited()
+        structured.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_extract_papers_falls_back_on_handler_failure(self) -> None:
+    async def test_extract_papers_falls_back_on_llm_failure(self) -> None:
         ranked = [_ranked("Paper Two", abstract="Some results.")]
-        handler = _mock_handler_failure()
 
-        extractions = await extract_papers(
-            ranked,
-            "test query",
-            llm_config=_legacy_llm_config(),
-            handler=handler,
-            concurrency=1,
-            synthesis_config=_llm_synthesis_config(max_llm_papers=1),
-        )
+        with patch(STRUCTURED_TARGET, _structured_mock(None)):
+            extractions = await extract_papers(
+                ranked,
+                "test query",
+                concurrency=1,
+                synthesis_config=_llm_synthesis_config(max_llm_papers=1),
+            )
 
         assert len(extractions) == 1
         assert extractions[0].title == "Paper Two"
@@ -336,16 +315,14 @@ class TestSynthesisWorkflow:
             agreements=["Shared transformer usage"],
             gaps=["Need more benchmarks"],
         )
-        handler = _mock_handler_success(expected)
 
-        synthesis = await synthesize_collective(
-            "transformers",
-            extractions,
-            [],
-            llm_config=_legacy_llm_config(),
-            handler=handler,
-            synthesis_config=_llm_synthesis_config(),
-        )
+        with patch(STRUCTURED_TARGET, _structured_mock(expected)):
+            synthesis = await synthesize_collective(
+                "transformers",
+                extractions,
+                [],
+                synthesis_config=_llm_synthesis_config(),
+            )
 
         assert synthesis.agreements == ["Shared transformer usage"]
         assert synthesis.gaps == ["Need more benchmarks"]
@@ -361,56 +338,43 @@ class TestSynthesisWorkflow:
         extraction_a = PaperExtraction(paper_id="Paper A", title="Paper A", findings=["A"])
         extraction_b = PaperExtraction(paper_id="Paper B", title="Paper B", findings=["B"])
         synthesis = SynthesisResult(agreements=["Both use deep learning"], gaps=["Scale"])
+        structured = _structured_mock(extraction_a, extraction_b, synthesis)
 
-        handler = MagicMock(spec=EnhancedResponseHandler)
-        handler.process_structured_response = AsyncMock(
-            side_effect=[
-                ProcessingResult(success=True, data=extraction_a, processing_path=ProcessingPath.DIRECT_SUCCESS),
-                ProcessingResult(success=True, data=extraction_b, processing_path=ProcessingPath.DIRECT_SUCCESS),
-                ProcessingResult(success=True, data=synthesis, processing_path=ProcessingPath.DIRECT_SUCCESS),
-            ]
-        )
-
-        result, extractions, analyses = await run_synthesis(
-            "deep learning",
-            ranked,
-            clusters,
-            llm_config=_legacy_llm_config(),
-            handler=handler,
-            concurrency=2,
-            synthesis_config=_llm_synthesis_config(max_llm_papers=2),
-        )
+        with patch(STRUCTURED_TARGET, structured):
+            result, extractions, analyses = await run_synthesis(
+                "deep learning",
+                ranked,
+                clusters,
+                concurrency=2,
+                synthesis_config=_llm_synthesis_config(max_llm_papers=2),
+            )
 
         assert len(extractions) == 2
         assert result.agreements == ["Both use deep learning"]
         assert len(analyses) == 2
-        assert handler.process_structured_response.await_count == 3
+        assert structured.await_count == 3
 
 
 class TestGapAnalysis:
     @pytest.mark.asyncio
-    async def test_analyze_gaps_uses_handler(self) -> None:
+    async def test_analyze_gaps_uses_structured_llm(self) -> None:
         synthesis = SynthesisResult(gaps=["Missing ablations"])
         expected = GapAnalysisResult(
             gaps=["Missing ablations"],
             opportunities=["Run systematic ablations"],
         )
-        handler = _mock_handler_success(expected)
 
-        result = await analyze_gaps(
-            "query", synthesis, llm_config=_legacy_llm_config(), handler=handler
-        )
+        with patch(STRUCTURED_TARGET, _structured_mock(expected)):
+            result = await analyze_gaps("query", synthesis, llm_config=LLMConfig())
 
         assert result.opportunities == ["Run systematic ablations"]
 
     @pytest.mark.asyncio
     async def test_analyze_gaps_heuristic_fallback(self) -> None:
         synthesis = SynthesisResult(gaps=["Understudied domain"])
-        handler = _mock_handler_failure()
 
-        result = await analyze_gaps(
-            "query", synthesis, llm_config=_legacy_llm_config(), handler=handler
-        )
+        with patch(STRUCTURED_TARGET, _structured_mock(None)):
+            result = await analyze_gaps("query", synthesis, llm_config=LLMConfig())
 
         assert "Understudied domain" in result.gaps
         assert result.opportunities
@@ -427,16 +391,9 @@ class TestSynthesisPipelineStages:
         extraction = PaperExtraction(paper_id="Stage Paper", title="Stage Paper", findings=["F"])
         synthesis = SynthesisResult(agreements=["Agreement"], gaps=["Gap"])
 
-        handler = MagicMock(spec=EnhancedResponseHandler)
-        handler.process_structured_response = AsyncMock(
-            side_effect=[
-                ProcessingResult(success=True, data=extraction, processing_path=ProcessingPath.DIRECT_SUCCESS),
-                ProcessingResult(success=True, data=synthesis, processing_path=ProcessingPath.DIRECT_SUCCESS),
-            ]
-        )
-
-        stage = SynthesisStage(handler=handler)
-        result = await stage.run(ctx, clusters)
+        stage = SynthesisStage()
+        with patch(STRUCTURED_TARGET, _structured_mock(extraction, synthesis)):
+            result = await stage.run(ctx, clusters)
 
         assert isinstance(result.output, SynthesisResult)
         assert ctx.get_artifact("paper_extractions") is not None
@@ -448,10 +405,7 @@ class TestSynthesisPipelineStages:
         synthesis = SynthesisResult(gaps=["Gap one"])
         ctx = PipelineContext.create(
             "gap stage",
-            AppSettings(
-                synthesis={"llm_enabled": True},
-                llm={"structured_outputs": False},
-            ),
+            AppSettings(synthesis={"llm_enabled": True}),
         )
         ctx.set_artifact("paper_clusters", [PaperCluster(theme="T", paper_ids=["p1"])])
 
@@ -459,10 +413,10 @@ class TestSynthesisPipelineStages:
             gaps=["Gap one"],
             opportunities=["Opportunity one"],
         )
-        handler = _mock_handler_success(gap_result)
-        stage = GapAnalysisStage(handler=handler)
+        stage = GapAnalysisStage()
 
-        result = await stage.run(ctx, synthesis)
+        with patch(STRUCTURED_TARGET, _structured_mock(gap_result)):
+            result = await stage.run(ctx, synthesis)
 
         assert isinstance(result.output, GapAnalysisResult)
         assert ctx.get_artifact("gap_analysis") == gap_result
@@ -486,20 +440,20 @@ class TestSynthesisPipelineStages:
         synthesis = SynthesisResult(agreements=["A"], gaps=["G"])
         gap_result = GapAnalysisResult(gaps=["G"], opportunities=["O"])
 
-        handler = MagicMock(spec=EnhancedResponseHandler)
-        handler.process_structured_response = AsyncMock(
-            side_effect=[
-                ProcessingResult(success=True, data=extraction, processing_path=ProcessingPath.DIRECT_SUCCESS),
-                ProcessingResult(success=True, data=synthesis, processing_path=ProcessingPath.DIRECT_SUCCESS),
-                ProcessingResult(success=True, data=gap_result, processing_path=ProcessingPath.DIRECT_SUCCESS),
-            ]
-        )
+        by_type = {
+            PaperExtraction: extraction,
+            SynthesisResult: synthesis,
+            GapAnalysisResult: gap_result,
+        }
+
+        async def fake_structured(role, prompt, output_type, llm_config=None, **kwargs):
+            return by_type[output_type]
 
         pipeline = ResearchPipeline(
             [
                 ClusteringStub(),
-                SynthesisStage(handler=handler),
-                GapAnalysisStage(handler=handler),
+                SynthesisStage(),
+                GapAnalysisStage(),
             ],
             AppSettings(
                 pipeline={
@@ -512,7 +466,7 @@ class TestSynthesisPipelineStages:
             ),
         )
 
-        with patch("src.analysis.synthesis.create_llm_agent", return_value=MagicMock()):
+        with patch(STRUCTURED_TARGET, AsyncMock(side_effect=fake_structured)):
             result = await pipeline.execute("pipeline query")
 
         assert "synthesis" in result.stage_results
@@ -529,8 +483,9 @@ class TestStageRecovery:
         ctx.set_artifact("ranked_papers", ranked)
         ctx.set_artifact("paper_clusters", clusters)
 
-        stage = GapAnalysisStage(handler=_mock_handler_failure())
-        result = await stage.run(ctx, clusters)
+        stage = GapAnalysisStage()
+        with patch(STRUCTURED_TARGET, _structured_mock(None)):
+            result = await stage.run(ctx, clusters)
 
         assert isinstance(result.output, GapAnalysisResult)
         assert result.output.gaps
@@ -562,7 +517,7 @@ class TestStageRecovery:
     @pytest.mark.asyncio
     async def test_extract_papers_limits_llm_calls(self) -> None:
         ranked = [_ranked(f"Paper {index}", abstract=f"Abstract {index}") for index in range(12)]
-        handler = _mock_handler_success(
+        structured = _structured_mock(
             PaperExtraction(
                 paper_id="x",
                 title="Paper",
@@ -578,26 +533,24 @@ class TestStageRecovery:
             synthesis={
                 "llm_enabled": True,
                 "max_llm_papers": 3,
-                "extraction_max_retries": 0,
                 "concurrency": 2,
             },
         )
 
-        extractions = await extract_papers(
-            ranked,
-            "query",
-            llm_config=_legacy_llm_config(),
-            handler=handler,
-            synthesis_config=settings.synthesis,
-        )
+        with patch(STRUCTURED_TARGET, structured):
+            extractions = await extract_papers(
+                ranked,
+                "query",
+                synthesis_config=settings.synthesis,
+            )
 
         assert len(extractions) == 12
-        assert handler.process_structured_response.await_count == 3
+        assert structured.await_count == 3
 
     @pytest.mark.asyncio
     async def test_extract_papers_skips_llm_when_disabled(self) -> None:
         ranked = [_ranked(f"Paper {index}") for index in range(5)]
-        handler = _mock_handler_success(
+        structured = _structured_mock(
             PaperExtraction(
                 paper_id="x",
                 title="Paper",
@@ -609,12 +562,12 @@ class TestStageRecovery:
             )
         )
 
-        extractions = await extract_papers(
-            ranked,
-            "query",
-            handler=handler,
-            synthesis_config=AppSettings(synthesis={"llm_enabled": False}).synthesis,
-        )
+        with patch(STRUCTURED_TARGET, structured):
+            extractions = await extract_papers(
+                ranked,
+                "query",
+                synthesis_config=AppSettings(synthesis={"llm_enabled": False}).synthesis,
+            )
 
         assert len(extractions) == 5
-        assert handler.process_structured_response.await_count == 0
+        assert structured.await_count == 0
