@@ -4,7 +4,6 @@ llm:
   base_url: http://localhost:11434
   temperature: 0.2
   timeout_seconds: 120
-  structured_outputs: true
 
 embedding:
   model: BAAI/bge-small-en-v1.5
@@ -145,7 +144,5 @@ memory:
 synthesis:
   llm_mode: auto
   max_llm_papers: 3
-  extraction_max_retries: 0
-  collective_max_retries: 0
   concurrency: 2
   circuit_breaker_failures: 2
