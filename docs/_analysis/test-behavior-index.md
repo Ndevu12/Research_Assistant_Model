@@ -1,6 +1,6 @@
 # Test Behavior Index
 
-Source: all 28 files matching `tests/test_*.py`. Internal reference for `docs/development/testing.md`.
+Source: all files matching `tests/test_*.py`. Internal reference for `docs/development/testing.md`.
 
 ## Summary by domain
 
@@ -12,7 +12,7 @@ Source: all 28 files matching `tests/test_*.py`. Internal reference for `docs/de
 | Retrieval providers | `test_providers.py` |
 | Embeddings | `test_embeddings.py` |
 | Reporting / export | `test_reporting.py`, `test_export.py` |
-| LLM layer | `test_llm_providers.py`, `test_graceful_response_handling.py` |
+| LLM layer | `test_llm_providers.py`, `test_structured_outputs.py` |
 | Orchestrator / degradation | `test_json_parsing_bug_exploration.py`, `test_json_parsing_preservation.py` |
 | CLI / interactive | `test_main_mode_detection.py`, `test_interactive_mode.py`, `test_complete_workflow.py`, `test_input_handler.py`, `test_message_formatting.py`, `test_signal_handling.py`, `test_interactive_filters.py` |
 | Memory | `test_memory.py` |
@@ -216,7 +216,7 @@ Source: all 28 files matching `tests/test_*.py`. Internal reference for `docs/de
 | | |
 |---|---|
 | **Modules** | `src.analysis.synthesis`, `src.analysis.gap_analysis`, `src.core.stage_recovery` |
-| **Mocks** | `MagicMock(EnhancedResponseHandler)`; `patch create_llm_agent` |
+| **Mocks** | `patch src.models.structured.try_run_structured` (AsyncMock) |
 
 | Class | Behavior |
 |-------|----------|
@@ -302,28 +302,6 @@ Source: all 28 files matching `tests/test_*.py`. Internal reference for `docs/de
 |------|----------|
 | `TestStageLabels` | Friendly labels |
 | `TestProgressReporter` | Disabled → blocking; non-TTY disables reporter |
-
----
-
-### `test_graceful_response_handling.py`
-
-| | |
-|---|---|
-| **Modules** | `src.utils.{response_models,retry_manager,quality_monitor,enhanced_validation,content_quality,model_adaptation,fallback_processing}` |
-
-| Class | Behavior |
-|-------|----------|
-| `TestRetryManager` | Retry rules, prompt enhancement |
-| `TestQualityMonitor` | Success/failure recording |
-| `TestEnhancedValidation` | Retry strategy mapping |
-| `TestContentQuality` | Empty/insufficient/incomplete analysis detection |
-| `TestQueryAnalyzer` | Query broadening suggestions |
-| `TestRelevanceScorer` | Paper relevance ordering |
-| `TestJSONProcessing` | Extract, parse errors, validation |
-| `TestModelAdaptation` | GPT/Claude detection, markdown stripping |
-| `TestFallbackProcessing` | Unstructured text → structured fallback |
-
-**Note:** Does not exercise `EnhancedResponseHandler` end-to-end.
 
 ---
 
@@ -490,7 +468,6 @@ Source: all 28 files matching `tests/test_*.py`. Internal reference for `docs/de
 |-----|--------|
 | Query understanding | No dedicated unit test file |
 | API routes | Only scaffold test in `test_phase3_extensibility.py` |
-| `EnhancedResponseHandler` | Subcomponents tested, not end-to-end |
 | Live LLM integration | All LLM tests mock Pydantic AI |
 | Subprocess tests | `@pytest.mark.slow`; may skip in CI |
 
